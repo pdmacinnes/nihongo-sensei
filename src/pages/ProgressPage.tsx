@@ -34,6 +34,44 @@ export default function ProgressPage() {
   const chartData = last30Days.map(date => ({ date, xp: xpByDay[date] || 0 }))
   const maxXp = Math.max(...chartData.map(d => d.xp), 1)
 
+  // 28-day activity heatmap (4 complete weeks)
+  const heatmapDays = useMemo(() => {
+    // Start from the most recent Monday, go back 27 days (4 weeks)
+    const todayDate = new Date()
+    // Align to last Monday so grid is clean
+    const dayOfWeek = todayDate.getDay() // 0=Sun, 1=Mon, ...
+    const lastMonday = new Date(todayDate)
+    lastMonday.setDate(todayDate.getDate() - ((dayOfWeek + 6) % 7))
+    const days = Array.from({ length: 28 }, (_, i) => {
+      const d = new Date(lastMonday)
+      d.setDate(lastMonday.getDate() - (27 - i))
+      const dateStr = d.toISOString().split('T')[0]
+      return { date: dateStr, xp: xpByDay[dateStr] || 0, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
+    })
+    return days
+  }, [xpByDay])
+  const heatmapMax = Math.max(...heatmapDays.map(d => d.xp), 1)
+
+  // Weekly XP totals (last 8 weeks)
+  const weeklyXp = useMemo(() => {
+    const weeks: { label: string; xp: number }[] = []
+    const todayDate = new Date()
+    for (let w = 7; w >= 0; w--) {
+      let total = 0
+      const weekStart = new Date(todayDate)
+      weekStart.setDate(todayDate.getDate() - w * 7 - 6)
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(weekStart)
+        day.setDate(weekStart.getDate() + d)
+        const dateStr = day.toISOString().split('T')[0]
+        total += xpByDay[dateStr] || 0
+      }
+      weeks.push({ label: w === 0 ? 'This wk' : `${w}w ago`, xp: total })
+    }
+    return weeks
+  }, [xpByDay])
+  const maxWeeklyXp = Math.max(...weeklyXp.map(w => w.xp), 1)
+
   // 30-day review forecast
   const forecastData = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => {
@@ -108,6 +146,69 @@ export default function ProgressPage() {
         <div className="flex justify-between text-xs text-ink-400 mt-1">
           <span>30 days ago</span>
           <span>Today</span>
+        </div>
+      </motion.div>
+
+      {/* Study activity heatmap */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }} className="card mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-ink-200 font-semibold">Study Activity — Last 4 Weeks</h2>
+          <div className="flex items-center gap-1.5 text-xs text-ink-400">
+            <span>None</span>
+            {[0.2, 0.4, 0.7, 1].map(op => (
+              <div key={op} className="w-3 h-3 rounded-sm" style={{ background: `rgba(201,75,75,${op})` }} />
+            ))}
+            <span>High</span>
+          </div>
+        </div>
+        <div className="flex gap-0.5 mb-1 text-[10px] text-ink-400">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(d => (
+            <div key={d} className="flex-1 text-center">{d}</div>
+          ))}
+        </div>
+        <div className="grid gap-0.5" style={{ gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(4, 1fr)' }}>
+          {heatmapDays.map((day) => {
+            const intensity = day.xp > 0 ? Math.max(0.15, day.xp / heatmapMax) : 0
+            const isToday = day.date === today.toISOString().split('T')[0]
+            return (
+              <div
+                key={day.date}
+                title={`${day.label}: ${day.xp} XP`}
+                className={`h-7 rounded-sm transition-all cursor-default ${isToday ? 'ring-1 ring-sakura ring-offset-1' : ''}`}
+                style={{
+                  background: day.xp > 0
+                    ? `rgba(201,75,75,${intensity})`
+                    : 'rgba(0,0,0,0.05)',
+                }}
+              />
+            )
+          })}
+        </div>
+      </motion.div>
+
+      {/* Weekly XP chart */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.17 }} className="card mb-4">
+        <h2 className="text-ink-200 font-semibold mb-3">Weekly XP — Last 8 Weeks</h2>
+        <div className="flex items-end gap-2 h-20">
+          {weeklyXp.map((week, i) => {
+            const heightPct = week.xp > 0 ? Math.max((week.xp / maxWeeklyXp) * 100, 6) : 2
+            const isCurrent = i === weeklyXp.length - 1
+            return (
+              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 group relative">
+                {week.xp > 0 && (
+                  <span className="text-[10px] text-ink-400">{week.xp}</span>
+                )}
+                <div
+                  className={`w-full rounded-t transition-all duration-500 ${isCurrent ? 'bg-sakura' : 'bg-jade/60 group-hover:bg-jade/80'}`}
+                  style={{ height: `${heightPct}%` }}
+                  title={`${week.label}: ${week.xp} XP`}
+                />
+                <span className={`text-[10px] font-medium ${isCurrent ? 'text-sakura' : 'text-ink-400'}`}>
+                  {week.label}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </motion.div>
 

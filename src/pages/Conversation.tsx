@@ -21,6 +21,7 @@ const LEVELS = [
   { id: 'N4', label: 'N4 Elementary', desc: 'Everyday topics, basic grammar' },
   { id: 'N3', label: 'N3 Intermediate', desc: 'Natural conversation, varied grammar' },
   { id: 'N2', label: 'N2 Upper Int.', desc: 'Complex sentences, more kanji' },
+  { id: 'N1', label: 'N1 Advanced', desc: 'Near-native, complex expressions' },
 ]
 
 interface Message {
@@ -113,8 +114,18 @@ function parseResponse(raw: string): { japanese: string; translation: string; co
   return { japanese, translation, corrections }
 }
 
+function parseStoredMessage(content: string) {
+  const parts = content.split(/\n---\n/)
+  const japanese = (parts[0] || content).trim()
+  const rest = parts[1] || ''
+  const corrIdx = rest.indexOf('CORRECTIONS:')
+  const translation = corrIdx >= 0 ? rest.slice(0, corrIdx).trim() : rest.trim()
+  const corrections = corrIdx >= 0 ? rest.slice(corrIdx + 12).trim() : ''
+  return { japanese, translation, corrections }
+}
+
 export default function Conversation() {
-  const [phase, setPhase] = useState<'setup' | 'chat'>('setup')
+  const [phase, setPhase] = useState<'setup' | 'chat' | 'history' | 'historyDetail'>('setup')
   const [selectedScenario, setSelectedScenario] = useState('free')
   const [selectedLevel, setSelectedLevel] = useState('N5')
   const [messages, setMessages] = useState<Message[]>([])
@@ -122,11 +133,12 @@ export default function Conversation() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [showCorrections, setShowCorrections] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [historyConvId, setHistoryConvId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const { jlptLevel, apiKey, startConversation, addMessage, endConversation, addXP, addVocabCard, vocabCards } = useStore()
+  const { jlptLevel, apiKey, startConversation, addMessage, endConversation, addXP, addVocabCard, vocabCards, conversations } = useStore()
 
   useEffect(() => {
     setSelectedLevel(jlptLevel)
@@ -339,7 +351,7 @@ export default function Conversation() {
             {/* Level picker */}
             <div className="mb-8">
               <h2 className="text-ink-200 font-semibold mb-3">Difficulty level</h2>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-5 gap-3">
                 {LEVELS.map(l => (
                   <button
                     key={l.id}
@@ -366,8 +378,159 @@ export default function Conversation() {
             >
               <span className="japanese-text">始めましょう！</span> Start Conversation
             </button>
+
+            {conversations.length > 0 && (
+              <button
+                onClick={() => setPhase('history')}
+                className="w-full mt-3 btn-secondary py-3 text-sm"
+              >
+                View conversation history ({conversations.length})
+              </button>
+            )}
           </motion.div>
         )}
+
+        {phase === 'history' && (
+          <motion.div
+            key="history"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full"
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <button onClick={() => setPhase('setup')} className="btn-secondary text-sm">
+                Back
+              </button>
+              <h1 className="text-xl font-bold text-ink-100">Conversation History</h1>
+              <span className="text-ink-400 text-sm">({conversations.length} sessions)</span>
+            </div>
+
+            <div className="space-y-3">
+              {conversations.map(conv => {
+                const scenario = SCENARIOS.find(s => s.id === conv.scenario)
+                const duration = conv.endedAt
+                  ? Math.round((conv.endedAt - conv.startedAt) / 60000)
+                  : null
+                const userMsgCount = conv.messages.filter(m => m.role === 'user').length
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => { setHistoryConvId(conv.id); setPhase('historyDetail') }}
+                    className="w-full card text-left hover:border-sakura/30 hover:shadow-card-md transition-all group"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{scenario?.icon ?? '💬'}</span>
+                        <div>
+                          <p className="font-medium text-ink-100 group-hover:text-sakura transition-colors">
+                            {scenario?.labelEn ?? conv.scenario}
+                          </p>
+                          <p className="text-ink-400 text-xs mt-0.5">
+                            {new Date(conv.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {' · '}
+                            {new Date(conv.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0 ml-4">
+                        <span className={`text-xs ${{ N5: 'tag-jade', N4: 'tag-blue', N3: 'tag-gold', N2: 'tag-sakura', N1: 'tag-purple' }[conv.level as 'N5'] ?? 'tag-jade'}`}>
+                          {conv.level}
+                        </span>
+                        <p className="text-ink-400 text-xs mt-1">
+                          {userMsgCount} exchanges{duration ? ` · ${duration}m` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </motion.div>
+        )}
+
+        {phase === 'historyDetail' && (() => {
+          const conv = conversations.find(c => c.id === historyConvId)
+          if (!conv) return null
+          const scenario = SCENARIOS.find(s => s.id === conv.scenario)
+          return (
+            <motion.div
+              key="historyDetail"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex-1 flex flex-col overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-white shadow-sm flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setPhase('history')} className="btn-secondary text-sm">
+                    Back
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{scenario?.icon ?? '💬'}</span>
+                    <div>
+                      <p className="text-ink-100 font-medium text-sm">{scenario?.labelEn ?? conv.scenario}</p>
+                      <p className="text-ink-400 text-xs">
+                        {new Date(conv.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {' · '}{conv.level}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <span className={`text-xs ${{ N5: 'tag-jade', N4: 'tag-blue', N3: 'tag-gold', N2: 'tag-sakura', N1: 'tag-purple' }[conv.level as 'N5'] ?? 'tag-jade'}`}>
+                  {conv.level}
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-bg-primary">
+                {conv.messages.map((msg, i) => {
+                  const parsed = msg.role === 'assistant' ? parseStoredMessage(msg.content) : null
+                  return (
+                    <div
+                      key={msg.id ?? i}
+                      className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} gap-3`}
+                    >
+                      {msg.role === 'assistant' && (
+                        <div className="w-8 h-8 rounded-full bg-sakura/20 border border-sakura/30 flex items-center justify-center text-sm flex-shrink-0 mt-1">
+                          🌸
+                        </div>
+                      )}
+                      <div className="max-w-[75%] space-y-1">
+                        <div className={msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>
+                          <p className="japanese-text text-base leading-relaxed">
+                            {parsed ? parsed.japanese : msg.content}
+                          </p>
+                          {parsed?.translation && (
+                            <details className="mt-2">
+                              <summary className="text-ink-400 text-xs cursor-pointer hover:text-ink-300 select-none list-none flex items-center gap-1">
+                                <span>▶</span> Show translation
+                              </summary>
+                              <p className="text-ink-300 text-sm mt-1 pl-3 border-l border-border">{parsed.translation}</p>
+                            </details>
+                          )}
+                        </div>
+                        {parsed?.corrections && !parsed.corrections.startsWith('None') && (
+                          <details>
+                            <summary className="text-xs px-2 py-1 rounded-lg border border-gold/30 text-gold cursor-pointer hover:bg-gold/10 transition-all inline-block">
+                              View corrections
+                            </summary>
+                            <div className="mt-1 bg-gold/5 border border-gold/20 rounded-xl p-3 text-sm">
+                              <p className="text-gold font-medium text-xs mb-2">Sakura's Notes</p>
+                              <p className="text-ink-200 whitespace-pre-wrap leading-relaxed">{parsed.corrections}</p>
+                            </div>
+                          </details>
+                        )}
+                        <p className="text-ink-500 text-xs px-1">
+                          {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </motion.div>
+          )
+        })()}
 
         {phase === 'chat' && (
           <motion.div

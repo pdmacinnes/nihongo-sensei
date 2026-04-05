@@ -5,25 +5,25 @@ import { useStore } from '../store'
 
 const NAV_ITEMS = [
   { path: '/',             label: 'ホーム',  labelEn: 'Home',         icon: '🏠' },
-  { path: '/conversation', label: '会話',    labelEn: 'Chat',         icon: '💬', badge: 'AI' },
   { path: '/kana',         label: 'かな',    labelEn: 'Kana',         icon: 'あ' },
   { path: '/vocab',        label: '単語',    labelEn: 'Vocab',        icon: '📚' },
-  { path: '/grammar',      label: '文法',    labelEn: 'Grammar',      icon: '✍️' },
-  { path: '/progress',     label: '進捗',    labelEn: 'Progress',     icon: '📊' },
-  { path: '/reading',      label: '読書',    labelEn: 'Reading',      icon: '📰' },
   { path: '/kanji',        label: '漢字',    labelEn: 'Kanji',        icon: '漢' },
-  { path: '/resources',    label: '資料',    labelEn: 'Resources',    icon: '🔗' },
+  { path: '/grammar',      label: '文法',    labelEn: 'Grammar',      icon: '✍️' },
+  { path: '/reading',      label: '読書',    labelEn: 'Reading',      icon: '📰' },
+  { path: '/conversation', label: '会話',    labelEn: 'Chat',         icon: '💬', badge: 'AI' },
+  { path: '/progress',     label: '進捗',    labelEn: 'Progress',     icon: '📊' },
   { path: '/guide',        label: 'ガイド',  labelEn: 'Guide',        icon: '📖' },
+  { path: '/resources',    label: '資料',    labelEn: 'Resources',    icon: '🔗' },
   { path: '/settings',     label: '設定',    labelEn: 'Settings',     icon: '⚙️' },
 ]
 
 // 5 items always visible in the mobile bottom bar
 const BOTTOM_NAV = [
-  { path: '/',             labelEn: 'Home',  icon: '🏠' },
-  { path: '/vocab',        labelEn: 'Vocab', icon: '📚' },
-  { path: '/conversation', labelEn: 'Chat',  icon: '💬' },
-  { path: '/kana',         labelEn: 'Kana',  icon: 'あ' },
-  { path: '/kanji',        labelEn: 'Kanji', icon: '漢' },
+  { path: '/',             labelEn: 'Home',     icon: '🏠' },
+  { path: '/vocab',        labelEn: 'Vocab',    icon: '📚' },
+  { path: '/conversation', labelEn: 'Chat',     icon: '💬' },
+  { path: '/progress',     labelEn: 'Progress', icon: '📊' },
+  { path: '/kanji',        labelEn: 'Kanji',    icon: '漢' },
 ]
 
 export default function Layout() {
