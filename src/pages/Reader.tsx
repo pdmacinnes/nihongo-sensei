@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import toast from 'react-hot-toast'
 import { useStore, READER_JAPANESE_RE, READER_CHAR_CAP } from '../store'
 import { preloadTokenizer, Token } from '../lib/tokenizer'
+import { preloadDictionary, lookupWord, lookupFrequency } from '../lib/dictionary'
 import { VOCAB_DATA } from '../lib/vocab-data'
 
 interface WordInfo {
@@ -96,6 +97,9 @@ export default function Reader() {
     preloadTokenizer()
       .then(() => setTokenizerReady(true))
       .catch(() => setTokenizerError(true))
+    // Fired independently — word lookups await this internally when needed, but it
+    // shouldn't hold up tokenization/pasting, which doesn't need the dictionary at all.
+    preloadDictionary().catch(() => {})
   }, [startReaderSession])
 
   useEffect(() => {
@@ -152,15 +156,33 @@ export default function Reader() {
     }
   }
 
-  const findLocalGloss = useCallback((token: Token): string | null => {
-    const all = [...VOCAB_DATA, ...customWords]
-    const match = all.find(w => w.japanese === token.basicForm || w.japanese === token.surface)
-    return match ? match.english : null
+  // Priority: your own curated words -> bundled offline JMdict -> AI (only for words
+  // neither of the above has — VN slang, proper nouns, etc). Frequency is always checked
+  // locally first regardless of where the gloss came from, since the bundled BCCWJ-based
+  // data is more consistent than an AI guess; AI's frequency guess is only a last resort.
+  const resolveLocalInfo = useCallback(async (token: Token): Promise<WordInfo | null> => {
+    const curated = [...VOCAB_DATA, ...customWords].find(w => w.japanese === token.basicForm || w.japanese === token.surface)
+    const localFreq = await lookupFrequency(token.basicForm).catch(() => null)
+
+    if (curated) {
+      return { gloss: curated.english, frequency: localFreq, contextDependent: false, contextNote: null }
+    }
+
+    const dictResult = await lookupWord(token.basicForm, token.reading).catch(() => null)
+    if (dictResult) {
+      return {
+        gloss: dictResult.gloss,
+        frequency: localFreq,
+        contextDependent: dictResult.contextDependent,
+        contextNote: null,
+      }
+    }
+
+    return null
   }, [customWords])
 
-  const fetchWordInfo = useCallback(async (token: Token): Promise<WordInfo | null> => {
+  const fetchAiWordInfo = useCallback(async (token: Token): Promise<WordInfo | null> => {
     if (!apiKey) return null
-    setInfoLoading(true)
     try {
       const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
       const resp = await client.messages.create({
@@ -179,32 +201,41 @@ CONTEXT_NOTE: <if yes, a short note under 15 words on what changes; if no, leave
       const contextDependent = /CONTEXT_DEPENDENT:\s*(yes)/i.test(text)
       const contextNote = /CONTEXT_NOTE:\s*(.+)/.exec(text)?.[1]?.trim() || null
       if (!gloss) return null
-      const info: WordInfo = { gloss, frequency, contextDependent, contextNote: contextDependent ? contextNote : null }
-      setInfoCache(prev => ({ ...prev, [token.basicForm]: info }))
-      return info
+      return { gloss, frequency, contextDependent, contextNote: contextDependent ? contextNote : null }
     } catch {
       return null
-    } finally {
-      setInfoLoading(false)
     }
   }, [apiKey])
 
   useEffect(() => {
     if (!activeWord) { setCurrentInfo(null); return }
-    const local = findLocalGloss(activeWord.token)
     const cached = infoCache[activeWord.token.basicForm]
-    if (cached) {
-      setCurrentInfo(local ? { ...cached, gloss: local } : cached)
-      return
-    }
-    setCurrentInfo(local ? { gloss: local, frequency: null, contextDependent: false, contextNote: null } : null)
+    if (cached) { setCurrentInfo(cached); return }
+
+    setCurrentInfo(null)
+    setInfoLoading(true)
     let cancelled = false
-    fetchWordInfo(activeWord.token).then(info => {
-      if (cancelled || !info) return
-      setCurrentInfo(local ? { ...info, gloss: local } : info)
+
+    resolveLocalInfo(activeWord.token).then(async local => {
+      if (cancelled) return
+      if (local) {
+        setCurrentInfo(local)
+        setInfoCache(prev => ({ ...prev, [activeWord.token.basicForm]: local }))
+        setInfoLoading(false)
+        return
+      }
+      const aiInfo = await fetchAiWordInfo(activeWord.token)
+      if (cancelled) return
+      if (!aiInfo) { setInfoLoading(false); return }
+      const localFreq = await lookupFrequency(activeWord.token.basicForm).catch(() => null)
+      const info = localFreq ? { ...aiInfo, frequency: localFreq } : aiInfo
+      setCurrentInfo(info)
+      setInfoCache(prev => ({ ...prev, [activeWord.token.basicForm]: info }))
+      setInfoLoading(false)
     })
+
     return () => { cancelled = true }
-  }, [activeWord, findLocalGloss, infoCache, fetchWordInfo])
+  }, [activeWord, infoCache, resolveLocalInfo, fetchAiWordInfo])
 
   const handleAddWord = () => {
     if (!activeWord) return

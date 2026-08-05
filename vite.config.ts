@@ -4,16 +4,17 @@ import { VitePWA } from 'vite-plugin-pwa'
 import fs from 'node:fs'
 import path from 'node:path'
 
-// The dev server's static middleware (sirv) auto-detects the ".gz" extension and serves
-// these files with Content-Encoding: gzip, so the browser transparently decompresses them
-// before kuromoji's own zlib.js gets to — it then fails trying to gunzip already-raw bytes.
-// Serve the raw compressed bytes with no Content-Encoding so kuromoji can decompress them itself.
-function kuromojiDictRaw(): Plugin {
+// The dev server's static middleware (sirv) auto-detects the ".gz" extension on any static
+// asset and serves it with Content-Encoding: gzip, so the browser transparently decompresses
+// it before our own code gets to — every bundled .gz dataset (kuromoji dict, JMdict,
+// frequency data) then fails trying to decompress already-raw bytes. Serve every .gz under
+// public/ with no Content-Encoding so our own DecompressionStream calls get the real bytes.
+function rawGzipAssets(): Plugin {
   return {
-    name: 'kuromoji-dict-raw',
+    name: 'raw-gzip-assets',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (!req.url?.startsWith('/kuromoji-dict/')) return next()
+        if (!req.url?.split('?')[0].endsWith('.gz')) return next()
         const filePath = path.join(process.cwd(), 'public', req.url.split('?')[0])
         fs.readFile(filePath, (err, data) => {
           if (err) return next()
@@ -44,7 +45,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    kuromojiDictRaw(),
+    rawGzipAssets(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico'],

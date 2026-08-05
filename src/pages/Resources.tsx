@@ -628,6 +628,14 @@ export default function Resources() {
       <p className="text-ink-400 text-xs text-center mt-10">
         All links open in a new tab · Free resources are marked in green · Paid resources often have free tiers
       </p>
+
+      {/* Data attribution */}
+      <p className="text-ink-400 text-xs text-center mt-3 max-w-2xl mx-auto leading-relaxed">
+        The Reader's offline dictionary uses <a href="https://www.edrdg.org/jmdict/j_jmdict.html" target="_blank" rel="noreferrer" className="underline hover:text-sakura">JMdict</a>, property of the{' '}
+        <a href="https://www.edrdg.org/" target="_blank" rel="noreferrer" className="underline hover:text-sakura">Electronic Dictionary Research and Development Group</a>, used in conformance with their license.
+        Word frequency data is derived from the University of Leeds Japanese corpus (CC BY) via{' '}
+        <a href="https://github.com/hingston/japanese" target="_blank" rel="noreferrer" className="underline hover:text-sakura">hingston/japanese</a>.
+      </p>
     </div>
   )
 }
