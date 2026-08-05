@@ -3,8 +3,10 @@ const path = require('node:path')
 
 const isDev = !app.isPackaged
 
-const JAPANESE_RE = /[぀-ヿ一-鿿]/
 const CAPTURE_POLL_MS = 500
+// Sanity cap — a real VN line is a sentence or two; this just guards against forwarding
+// something huge if the user happens to copy an unrelated document while capture is on.
+const CAPTURE_MAX_LEN = 3000
 
 let mainWindow = null
 let captureInterval = null
@@ -16,9 +18,10 @@ function startCapture() {
   lastCapturedText = clipboard.readText()
   captureInterval = setInterval(() => {
     const text = clipboard.readText().trim()
-    if (!text || text === lastCapturedText) return
+    if (!text || text === lastCapturedText || text.length > CAPTURE_MAX_LEN) return
     lastCapturedText = text
-    if (!JAPANESE_RE.test(text)) return
+    // Forward both Japanese and non-Japanese text — the renderer pairs non-Japanese
+    // text (e.g. a translation-patch's English hook) with the preceding Japanese line.
     mainWindow?.webContents.send('capture:text', text)
   }, CAPTURE_POLL_MS)
 }

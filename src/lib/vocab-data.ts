@@ -13,6 +13,9 @@ export interface VocabWord {
   pos?: string
   // Pitch accent type (standard Tokyo/NHK): 0=heiban, 1=atamadaka, 2+=drop after nth mora
   pitchAccent?: number
+  // Set on words saved from the Reader — how often used in everyday speech, and a note when meaning is context-dependent
+  frequency?: string
+  contextNote?: string
 }
 
 const VOCAB_N5: VocabWord[] = [

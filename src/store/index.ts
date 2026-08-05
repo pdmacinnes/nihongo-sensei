@@ -56,6 +56,10 @@ export interface CustomVocabWord {
   level: 'N5' | 'N4' | 'N3' | 'N2' | 'N1'
   category: string
   pos?: string
+  // How often the word comes up in everyday Japanese speech: 'very common' | 'common' | 'uncommon' | 'rare'
+  frequency?: string
+  // Set when the word's meaning/nuance shifts significantly depending on context
+  contextNote?: string
 }
 
 export interface DailyXpEntry {

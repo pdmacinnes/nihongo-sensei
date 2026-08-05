@@ -9,6 +9,13 @@ import { speak, isTTSAvailable } from '../lib/tts'
 
 type Tab = 'review' | 'listen' | 'leeches' | 'quiz' | 'wordbank' | 'browse'
 
+const FREQUENCY_STYLES: Record<string, string> = {
+  'very common': 'bg-jade/10 text-jade border-jade/25',
+  'common': 'bg-blue-50 text-blue-600 border-blue-200',
+  'uncommon': 'bg-gold/10 text-gold border-gold/25',
+  'rare': 'bg-sakura/10 text-sakura border-sakura/25',
+}
+
 // Split kana reading into individual morae (handles small kana: ゃゅょャュョっッ)
 function splitMorae(reading: string): string[] {
   const morae: string[] = []
@@ -117,7 +124,20 @@ function SentenceCard({
           <p className="text-2xl font-semibold text-ink-100 mb-3">{word.english}</p>
           <div className="flex items-center gap-2 flex-wrap justify-center">
             {word.pos && <span className="tag bg-bg-secondary text-ink-400 border-border">{word.pos}</span>}
+            {word.frequency && (
+              <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${FREQUENCY_STYLES[word.frequency] ?? 'bg-bg-secondary text-ink-400 border-border'}`}>
+                {word.frequency}
+              </span>
+            )}
+            {word.contextNote && (
+              <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-gold/10 text-gold border-gold/25" title={word.contextNote}>
+                ⚠ Context-dependent
+              </span>
+            )}
           </div>
+          {word.contextNote && (
+            <p className="text-ink-400 text-xs mt-1.5">{word.contextNote}</p>
+          )}
           {word.pitchAccent !== undefined && (
             <PitchAccent reading={word.reading} accent={word.pitchAccent} />
           )}
@@ -946,6 +966,11 @@ export default function VocabReview() {
                           {showFurigana && <span className="text-ink-400 text-sm">{word.reading}</span>}
                         </div>
                         <p className="text-ink-200 font-medium">{word.english}</p>
+                        {word.frequency && (
+                          <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full border font-medium capitalize mt-1 ${FREQUENCY_STYLES[word.frequency] ?? 'bg-bg-secondary text-ink-400 border-border'}`}>
+                            {word.frequency}
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         {isCustom

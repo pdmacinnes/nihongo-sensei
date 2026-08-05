@@ -11,7 +11,13 @@ interface ReaderLine {
   text: string
   tokens: Token[] | null
   translation: string | null
-  translating: boolean
+}
+
+interface WordInfo {
+  gloss: string
+  frequency: string | null
+  contextDependent: boolean
+  contextNote: string | null
 }
 
 const POS_LABELS: Record<string, string> = {
@@ -27,6 +33,13 @@ const POS_LABELS: Record<string, string> = {
   '感動詞': 'interjection',
   '記号': 'symbol',
   'フィラー': 'filler',
+}
+
+const FREQUENCY_STYLES: Record<string, string> = {
+  'very common': 'bg-jade/10 text-jade border-jade/25',
+  'common': 'bg-blue-50 text-blue-600 border-blue-200',
+  'uncommon': 'bg-gold/10 text-gold border-gold/25',
+  'rare': 'bg-sakura/10 text-sakura border-sakura/25',
 }
 
 const JAPANESE_RE = /[぀-ヿ一-鿿]/
@@ -61,9 +74,9 @@ export default function Reader() {
   const [tokenizerReady, setTokenizerReady] = useState(false)
   const [tokenizerError, setTokenizerError] = useState(false)
   const [activeWord, setActiveWord] = useState<{ lineText: string; token: Token } | null>(null)
-  const [currentGloss, setCurrentGloss] = useState<string | null>(null)
-  const [glossLoading, setGlossLoading] = useState(false)
-  const [glossCache, setGlossCache] = useState<Record<string, string>>({})
+  const [currentInfo, setCurrentInfo] = useState<WordInfo | null>(null)
+  const [infoLoading, setInfoLoading] = useState(false)
+  const [infoCache, setInfoCache] = useState<Record<string, WordInfo>>({})
   const [newWordsAdded, setNewWordsAdded] = useState(0)
   const [now, setNow] = useState(Date.now())
   const [captureOn, setCaptureOn] = useState(false)
@@ -73,6 +86,9 @@ export default function Reader() {
   const startedRef = useRef(false)
   const sessionIdRef = useRef<string | null>(null)
   const sessionStartRef = useRef(Date.now())
+  // Tracks the most recently added Japanese line so a later, separate non-Japanese
+  // capture event (Textractor's translated-text hook) can be paired to it as its translation.
+  const lastJpLineRef = useRef<{ id: string } | null>(null)
 
   useEffect(() => {
     if (startedRef.current) return
@@ -116,36 +132,70 @@ export default function Reader() {
     })
   }, [stats.linesRead, stats.charsRead, stats.uniqueWordIds.length, newWordsAdded, updateReaderSession])
 
-  const addLines = useCallback(async (raw: string) => {
-    const rawLines = raw.split('\n').map(l => l.trim()).filter(Boolean)
-    if (rawLines.length === 0) return
+  // Shared ingestion path for both pasted text and live Textractor capture events.
+  // Japanese text becomes a new line (prepended — newest on top). Non-Japanese text is
+  // treated as the translation for whichever Japanese line came immediately before it,
+  // which is how a fan-translation patch's dual JP/EN hooks show up through Capture Mode.
+  const ingestTexts = useCallback((texts: string[]) => {
+    const cleaned = texts.map(t => t.trim()).filter(Boolean)
+    if (cleaned.length === 0) return
 
-    // Cap how much we tokenize in one go so pasting a whole chapter doesn't lock up the UI.
-    let charCount = 0
-    let cutoff = rawLines.length
-    for (let i = 0; i < rawLines.length; i++) {
-      charCount += rawLines[i].length
-      if (charCount > CHAR_CAP) { cutoff = i; break }
-    }
-    const toProcess = rawLines.slice(0, Math.max(cutoff, 1))
-    const overflow = rawLines.slice(toProcess.length)
+    const newLines: ReaderLine[] = []
+    const translationById = new Map<string, string>()
 
-    for (const text of toProcess) {
-      const id = `ln_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-      setLines(prev => [...prev, { id, text, tokens: null, translation: null, translating: false }])
-      try {
-        const tokens = await tokenize(text)
-        setLines(prev => prev.map(l => l.id === id ? { ...l, tokens } : l))
-      } catch {
-        toast.error('Failed to tokenize a line')
+    for (const text of cleaned) {
+      if (JAPANESE_RE.test(text)) {
+        const id = `ln_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+        newLines.push({ id, text, tokens: null, translation: null })
+        lastJpLineRef.current = { id }
+      } else if (lastJpLineRef.current) {
+        translationById.set(lastJpLineRef.current.id, text)
       }
     }
 
+    if (newLines.length === 0 && translationById.size === 0) return
+
+    const newLinesWithTranslation = newLines.map(l =>
+      translationById.has(l.id) ? { ...l, translation: translationById.get(l.id)! } : l
+    )
+
+    setLines(prev => {
+      const updatedExisting = prev.map(l =>
+        translationById.has(l.id) ? { ...l, translation: translationById.get(l.id)! } : l
+      )
+      return [...newLinesWithTranslation, ...updatedExisting]
+    })
+
+    newLines.forEach(line => {
+      tokenize(line.text)
+        .then(tokens => setLines(prev => prev.map(l => l.id === line.id ? { ...l, tokens } : l)))
+        .catch(() => toast.error('Failed to tokenize a line'))
+    })
+  }, [])
+
+  const addLines = useCallback((raw: string) => {
+    const rawTexts = raw.split('\n').map(l => l.trim()).filter(Boolean)
+    if (rawTexts.length === 0) return
+
+    // Cap how much Japanese text we tokenize in one go so pasting a whole chapter doesn't lock up the UI.
+    let jpCharCount = 0
+    let cutoff = rawTexts.length
+    for (let i = 0; i < rawTexts.length; i++) {
+      if (JAPANESE_RE.test(rawTexts[i])) {
+        jpCharCount += rawTexts[i].length
+        if (jpCharCount > CHAR_CAP) { cutoff = i; break }
+      }
+    }
+    const toProcess = rawTexts.slice(0, Math.max(cutoff, 1))
+    const overflow = rawTexts.slice(toProcess.length)
+
+    ingestTexts(toProcess)
+
     if (overflow.length > 0) {
       setPendingOverflow(overflow.join('\n'))
-      toast(`Loaded first ${CHAR_CAP.toLocaleString()} characters — click "Load more" below to continue`, { icon: '📄' })
+      toast(`Loaded first ${CHAR_CAP.toLocaleString()} characters — click "Load more" to continue`, { icon: '📄' })
     }
-  }, [])
+  }, [ingestTexts])
 
   const loadMore = () => {
     if (!pendingOverflow) return
@@ -163,31 +213,12 @@ export default function Reader() {
   useEffect(() => {
     if (!isElectron || !captureOn || !tokenizerReady) return
     window.electronAPI!.startCapture()
-    const unsubscribe = window.electronAPI!.onCaptureText(text => addLines(text))
+    const unsubscribe = window.electronAPI!.onCaptureText(text => ingestTexts([text]))
     return () => {
       unsubscribe()
       window.electronAPI!.stopCapture()
     }
-  }, [isElectron, captureOn, tokenizerReady, addLines])
-
-  const translateLine = async (line: ReaderLine) => {
-    if (!apiKey) { toast.error('Set your Anthropic API key in Settings first'); return }
-    setLines(prev => prev.map(l => l.id === line.id ? { ...l, translating: true } : l))
-    try {
-      const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
-      const resp = await client.messages.create({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: `Translate this Japanese line to natural English. Respond with only the translation, nothing else:\n\n${line.text}` }],
-      })
-      const block = resp.content[0]
-      const text = block?.type === 'text' ? block.text.trim() : ''
-      setLines(prev => prev.map(l => l.id === line.id ? { ...l, translation: text, translating: false } : l))
-    } catch {
-      toast.error('Translation failed')
-      setLines(prev => prev.map(l => l.id === line.id ? { ...l, translating: false } : l))
-    }
-  }
+  }, [isElectron, captureOn, tokenizerReady, ingestTexts])
 
   const findLocalGloss = useCallback((token: Token): string | null => {
     const all = [...VOCAB_DATA, ...customWords]
@@ -195,37 +226,53 @@ export default function Reader() {
     return match ? match.english : null
   }, [customWords])
 
-  const fetchGloss = useCallback(async (token: Token): Promise<string | null> => {
+  const fetchWordInfo = useCallback(async (token: Token): Promise<WordInfo | null> => {
     if (!apiKey) return null
-    setGlossLoading(true)
+    setInfoLoading(true)
     try {
       const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
       const resp = await client.messages.create({
         model: 'claude-sonnet-4-6',
-        max_tokens: 60,
-        messages: [{ role: 'user', content: `Give a short English gloss (1-6 words, no explanation, no trailing punctuation) for the Japanese word "${token.basicForm}" (reading: ${token.reading}). Respond with only the gloss.` }],
+        max_tokens: 150,
+        messages: [{ role: 'user', content: `For the Japanese word "${token.basicForm}" (reading: ${token.reading}), respond in exactly this format and nothing else:
+GLOSS: <short English gloss, 1-6 words, no trailing punctuation>
+FREQUENCY: <one of: very common, common, uncommon, rare — how often this word is used in everyday Japanese speech>
+CONTEXT_DEPENDENT: <yes or no — yes if the meaning or nuance changes significantly depending on context>
+CONTEXT_NOTE: <if yes, a short note under 15 words on what changes; if no, leave this blank>` }],
       })
       const block = resp.content[0]
-      const text = block?.type === 'text' ? block.text.trim() : ''
-      if (text) setGlossCache(prev => ({ ...prev, [token.basicForm]: text }))
-      return text || null
+      const text = block?.type === 'text' ? block.text : ''
+      const gloss = /GLOSS:\s*(.+)/.exec(text)?.[1]?.trim() ?? ''
+      const frequency = /FREQUENCY:\s*(.+)/.exec(text)?.[1]?.trim().toLowerCase() ?? null
+      const contextDependent = /CONTEXT_DEPENDENT:\s*(yes)/i.test(text)
+      const contextNote = /CONTEXT_NOTE:\s*(.+)/.exec(text)?.[1]?.trim() || null
+      if (!gloss) return null
+      const info: WordInfo = { gloss, frequency, contextDependent, contextNote: contextDependent ? contextNote : null }
+      setInfoCache(prev => ({ ...prev, [token.basicForm]: info }))
+      return info
     } catch {
       return null
     } finally {
-      setGlossLoading(false)
+      setInfoLoading(false)
     }
   }, [apiKey])
 
   useEffect(() => {
-    if (!activeWord) { setCurrentGloss(null); return }
+    if (!activeWord) { setCurrentInfo(null); return }
     const local = findLocalGloss(activeWord.token)
-    if (local) { setCurrentGloss(local); return }
-    if (glossCache[activeWord.token.basicForm]) { setCurrentGloss(glossCache[activeWord.token.basicForm]); return }
-    setCurrentGloss(null)
+    const cached = infoCache[activeWord.token.basicForm]
+    if (cached) {
+      setCurrentInfo(local ? { ...cached, gloss: local } : cached)
+      return
+    }
+    setCurrentInfo(local ? { gloss: local, frequency: null, contextDependent: false, contextNote: null } : null)
     let cancelled = false
-    fetchGloss(activeWord.token).then(g => { if (!cancelled) setCurrentGloss(g) })
+    fetchWordInfo(activeWord.token).then(info => {
+      if (cancelled || !info) return
+      setCurrentInfo(local ? { ...info, gloss: local } : info)
+    })
     return () => { cancelled = true }
-  }, [activeWord, findLocalGloss, glossCache, fetchGloss])
+  }, [activeWord, findLocalGloss, infoCache, fetchWordInfo])
 
   const handleAddWord = () => {
     if (!activeWord) return
@@ -238,12 +285,14 @@ export default function Reader() {
     addCustomWord({
       japanese: token.basicForm,
       reading: token.reading,
-      english: currentGloss || '(no definition found)',
+      english: currentInfo?.gloss || '(no definition found)',
       sentenceJp: lineText,
       sentenceEn: '',
       level: jlptLevel,
       category: 'vn-reader',
       pos: POS_LABELS[token.pos] ?? token.pos,
+      frequency: currentInfo?.frequency ?? undefined,
+      contextNote: currentInfo?.contextDependent ? (currentInfo.contextNote ?? undefined) : undefined,
     })
     setNewWordsAdded(n => n + 1)
     toast.success(`Added "${token.basicForm}" to your deck`)
@@ -279,7 +328,7 @@ export default function Reader() {
         </div>
       </div>
 
-      {/* Input */}
+      {/* Capture Mode */}
       {isElectron && (
         <div className="card mb-5">
           <div className="flex items-center justify-between">
@@ -310,13 +359,14 @@ export default function Reader() {
                 <p><span className="font-semibold text-ink-200">1.</span> Install <a href="https://github.com/Artikash/Textractor" target="_blank" rel="noreferrer" className="text-sakura underline">Textractor</a> (free, open-source text hooker) and launch your VN.</p>
                 <p><span className="font-semibold text-ink-200">2.</span> In Textractor, attach it to your VN's process from the dropdown at the top.</p>
                 <p><span className="font-semibold text-ink-200">3.</span> Open Textractor's Extensions panel and enable the <span className="font-medium text-ink-200">Clipboard</span> extension — this copies each extracted line to your clipboard automatically.</p>
-                <p><span className="font-semibold text-ink-200">4.</span> Turn on Capture Mode above. New lines will appear here as you play — click any word for its reading and meaning, and save anything new straight to your deck.</p>
+                <p><span className="font-semibold text-ink-200">4.</span> Turn on Capture Mode above. New lines appear here as you play, newest on top. If your VN has a translation patch and Textractor is hooked to both the Japanese and English text, the English will attach automatically as each line's translation — no extra step needed.</p>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
       )}
 
+      {/* Input */}
       <div className="card mb-5">
         {!tokenizerReady && !tokenizerError && (
           <p className="text-ink-400 text-sm mb-2">Loading dictionary… (first load only, ~15MB)</p>
@@ -341,10 +391,15 @@ export default function Reader() {
         </button>
       </div>
 
-      {/* Lines feed */}
+      {/* Lines feed — newest on top */}
       <div className="space-y-3">
+        {pendingOverflow && (
+          <button onClick={loadMore} className="btn-secondary w-full py-3">
+            Load more ({pendingOverflow.length.toLocaleString()} characters remaining)
+          </button>
+        )}
         {lines.map(line => (
-          <motion.div key={line.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="card">
+          <motion.div key={line.id} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="card">
             <p className="japanese-text text-lg leading-loose text-ink-100">
               {line.tokens
                 ? line.tokens.map((t, i) => (
@@ -352,17 +407,8 @@ export default function Reader() {
                   ))
                 : line.text}
             </p>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
-              <button
-                onClick={() => translateLine(line)}
-                disabled={line.translating}
-                className="text-xs text-sakura font-medium disabled:opacity-50"
-              >
-                {line.translating ? 'Translating…' : line.translation ? '↻ Retranslate' : '▼ Translate'}
-              </button>
-            </div>
             {line.translation && (
-              <p className="text-ink-400 text-sm italic mt-2">{line.translation}</p>
+              <p className="text-ink-400 text-sm italic mt-2 pt-2 border-t border-border">{line.translation}</p>
             )}
           </motion.div>
         ))}
@@ -370,11 +416,6 @@ export default function Reader() {
           <div className="text-center text-ink-400 text-sm py-10">
             No text yet — paste something above to get started.
           </div>
-        )}
-        {pendingOverflow && (
-          <button onClick={loadMore} className="btn-secondary w-full py-3">
-            Load more ({pendingOverflow.length.toLocaleString()} characters remaining)
-          </button>
         )}
       </div>
 
@@ -396,14 +437,33 @@ export default function Reader() {
                 {activeWord.token.reading && <p className="text-ink-400 text-sm mt-0.5">{activeWord.token.reading}</p>}
                 <p className="text-ink-400 text-xs mt-1">{POS_LABELS[activeWord.token.pos] ?? activeWord.token.pos}</p>
               </div>
-              <div className="bg-bg-primary rounded-xl p-3 mb-4 min-h-[3rem] flex items-center justify-center text-center">
-                {glossLoading ? (
+              <div className="bg-bg-primary rounded-xl p-3 mb-3 min-h-[3rem] flex items-center justify-center text-center">
+                {currentInfo?.gloss ? (
+                  <span className="text-ink-200">{currentInfo.gloss}</span>
+                ) : infoLoading ? (
                   <span className="text-ink-400 text-sm">Looking up…</span>
                 ) : (
-                  <span className="text-ink-200">{currentGloss || (apiKey ? 'No definition found' : 'Set an API key in Settings for lookups')}</span>
+                  <span className="text-ink-200">{apiKey ? 'No definition found' : 'Set an API key in Settings for lookups'}</span>
                 )}
               </div>
-              <div className="flex gap-3">
+              {(currentInfo?.frequency || currentInfo?.contextDependent) && (
+                <div className="flex flex-wrap gap-1.5 justify-center mb-2">
+                  {currentInfo.frequency && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full border font-medium capitalize ${FREQUENCY_STYLES[currentInfo.frequency] ?? 'bg-bg-primary text-ink-400 border-border'}`}>
+                      {currentInfo.frequency}
+                    </span>
+                  )}
+                  {currentInfo.contextDependent && (
+                    <span className="text-xs px-2 py-0.5 rounded-full border font-medium bg-gold/10 text-gold border-gold/25">
+                      ⚠ Context-dependent
+                    </span>
+                  )}
+                </div>
+              )}
+              {currentInfo?.contextDependent && currentInfo.contextNote && (
+                <p className="text-ink-400 text-xs text-center mb-4">{currentInfo.contextNote}</p>
+              )}
+              <div className="flex gap-3 mt-4">
                 <button onClick={() => setActiveWord(null)} className="btn-secondary flex-1">Close</button>
                 <button onClick={handleAddWord} className="btn-primary flex-1">+ Add to deck</button>
               </div>
