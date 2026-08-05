@@ -14,6 +14,7 @@ import Settings from './pages/Settings'
 import GrammarStudy from './pages/GrammarStudy'
 import Guide from './pages/Guide'
 import ReadingPractice from './pages/ReadingPractice'
+import Reader from './pages/Reader'
 import KanjiStudy from './pages/KanjiStudy'
 import Resources from './pages/Resources'
 import Onboarding from './pages/Onboarding'
@@ -117,6 +118,7 @@ export default function App() {
               <Route path="grammar" element={<GrammarStudy />} />
               <Route path="guide" element={<Guide />} />
               <Route path="reading" element={<ReadingPractice />} />
+              <Route path="reader" element={<Reader />} />
               <Route path="kanji" element={<KanjiStudy />} />
               <Route path="resources" element={<Resources />} />
               <Route path="progress" element={<ProgressPage />} />

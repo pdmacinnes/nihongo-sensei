@@ -63,6 +63,17 @@ export interface DailyXpEntry {
   xp: number
 }
 
+export interface ReaderSession {
+  id: string
+  startedAt: number
+  source: 'manual' | 'capture'
+  sourceTitle?: string
+  linesRead: number
+  charsRead: number
+  uniqueWordIds: string[]
+  newWordsAdded: number
+}
+
 interface AppState {
   // Settings
   apiKey: string
@@ -158,6 +169,11 @@ interface AppState {
   // Onboarding
   hasCompletedOnboarding: boolean
   completeOnboarding: () => void
+
+  // VN/Immersion Reader
+  readerSessions: ReaderSession[]
+  startReaderSession: (source: 'manual' | 'capture', sourceTitle?: string) => string
+  updateReaderSession: (id: string, patch: Partial<Omit<ReaderSession, 'id' | 'startedAt'>>) => void
 }
 
 const todayStr = () => new Date().toISOString().split('T')[0]
@@ -470,6 +486,7 @@ export const useStore = create<AppState>()(
         dailyXpHistory: [],
         customWords: [],
         lastVocabCardSnapshot: null,
+        readerSessions: [],
       }),
 
       // Cloud sync
@@ -481,6 +498,22 @@ export const useStore = create<AppState>()(
       // Onboarding
       hasCompletedOnboarding: false,
       completeOnboarding: () => set({ hasCompletedOnboarding: true }),
+
+      // VN/Immersion Reader
+      readerSessions: [],
+      startReaderSession: (source, sourceTitle) => {
+        const id = `rs_${Date.now()}`
+        set(s => ({
+          readerSessions: [...s.readerSessions, {
+            id, startedAt: Date.now(), source, sourceTitle,
+            linesRead: 0, charsRead: 0, uniqueWordIds: [], newWordsAdded: 0,
+          }],
+        }))
+        return id
+      },
+      updateReaderSession: (id, patch) => set(s => ({
+        readerSessions: s.readerSessions.map(rs => rs.id === id ? { ...rs, ...patch } : rs),
+      })),
     }),
     {
       name: 'nihongo-sensei-v2',

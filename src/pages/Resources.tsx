@@ -371,6 +371,21 @@ const SECTIONS: Section[] = [
         free: false,
         note: 'Subscription',
       },
+      {
+        title: 'jpdb.io — Difficulty-Rated VN/Anime Lists',
+        type: 'website',
+        description: 'Browse visual novels and anime with machine-learning-generated difficulty ratings, so you can pick something at your actual level instead of diving into something too hard. Also doubles as a Japanese dictionary.',
+        url: 'https://jpdb.io/',
+        free: true,
+        note: 'Manga difficulty lists not supported yet (per their FAQ)',
+      },
+      {
+        title: 'Textractor — VN Text Hooker',
+        type: 'tool',
+        description: 'Free, open-source tool that extracts text live from visual novels as you play. Pairs with this app\'s Reader page (Electron build) — enable Textractor\'s Clipboard extension, then turn on Capture Mode in the Reader.',
+        url: 'https://github.com/Artikash/Textractor',
+        free: true,
+      },
     ],
   },
   {

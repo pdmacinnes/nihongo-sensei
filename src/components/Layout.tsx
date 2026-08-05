@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { path: '/kanji',        label: '漢字',    labelEn: 'Kanji',        icon: '漢' },
   { path: '/grammar',      label: '文法',    labelEn: 'Grammar',      icon: '✍️' },
   { path: '/reading',      label: '読書',    labelEn: 'Reading',      icon: '📰' },
+  { path: '/reader',       label: '読解',    labelEn: 'Reader',       icon: '🎮' },
   { path: '/conversation', label: '会話',    labelEn: 'Chat',         icon: '💬', badge: 'AI' },
   { path: '/progress',     label: '進捗',    labelEn: 'Progress',     icon: '📊' },
   { path: '/guide',        label: 'ガイド',  labelEn: 'Guide',        icon: '📖' },
