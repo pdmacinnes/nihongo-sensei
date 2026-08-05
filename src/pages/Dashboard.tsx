@@ -233,7 +233,7 @@ export default function Dashboard() {
           <div className="space-y-2">
             {[
               { step: '1', label: 'Learn Hiragana & Katakana', done: kanaMastery > 0, href: '/kana' },
-              { step: '2', label: 'Start vocab flashcards (10/day)', done: dueCards.length >= 0, href: '/vocab' },
+              { step: '2', label: 'Start vocab flashcards (10/day)', done: vocabCards.some(c => c.repetitions > 0), href: '/vocab' },
               { step: '3', label: 'Have your first conversation', done: totalConversations > 0, href: '/conversation' },
               { step: '4', label: 'Build a daily study streak', done: streak >= 3, href: '/' },
             ].map(item => (
