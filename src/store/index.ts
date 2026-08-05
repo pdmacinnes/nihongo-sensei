@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import toast from 'react-hot-toast'
 import { SRSCard, createSRSCard, reviewCard, isDue, SRSRating, getNewCardsForToday } from '../lib/srs'
 import { VOCAB_DATA } from '../lib/vocab-data'
+import type { Token } from '../lib/tokenizer'
 
 export interface VocabCardState extends SRSCard {
   wordId: string
@@ -77,6 +79,20 @@ export interface ReaderSession {
   uniqueWordIds: string[]
   newWordsAdded: number
 }
+
+export interface ReaderLine {
+  id: string
+  text: string
+  tokens: Token[] | null
+  translation: string | null
+}
+
+export const READER_JAPANESE_RE = /[぀-ヿ一-鿿]/
+export const READER_CHAR_CAP = 2000
+// Tracks the most recently added Japanese line so a later, separate non-Japanese
+// capture event can be paired to it as its translation. Plain module variable rather
+// than store state since it's an internal pointer, not something components read/render.
+let lastJpLineId: string | null = null
 
 interface AppState {
   // Settings
@@ -178,6 +194,21 @@ interface AppState {
   readerSessions: ReaderSession[]
   startReaderSession: (source: 'manual' | 'capture', sourceTitle?: string) => string
   updateReaderSession: (id: string, patch: Partial<Omit<ReaderSession, 'id' | 'startedAt'>>) => void
+
+  // Reader live session — deliberately NOT persisted to disk (see partialize below).
+  // Lives in the store rather than component state so it survives navigating to other
+  // tabs and back; the store module itself never unmounts while the app is running.
+  readerLines: ReaderLine[]
+  readerCaptureOn: boolean
+  setReaderCaptureOn: (on: boolean) => void
+  readerPendingOverflow: string | null
+  readerNewWordsAdded: number
+  incrementReaderNewWordsAdded: () => void
+  readerSessionId: string | null
+  readerSessionStart: number
+  ingestReaderTexts: (texts: string[]) => void
+  addReaderText: (raw: string) => void
+  loadMoreReaderOverflow: () => void
 }
 
 const todayStr = () => new Date().toISOString().split('T')[0]
@@ -491,6 +522,10 @@ export const useStore = create<AppState>()(
         customWords: [],
         lastVocabCardSnapshot: null,
         readerSessions: [],
+        readerLines: [],
+        readerCaptureOn: false,
+        readerPendingOverflow: null,
+        readerNewWordsAdded: 0,
       }),
 
       // Cloud sync
@@ -513,12 +548,93 @@ export const useStore = create<AppState>()(
             id, startedAt: Date.now(), source, sourceTitle,
             linesRead: 0, charsRead: 0, uniqueWordIds: [], newWordsAdded: 0,
           }].slice(-200),
+          readerSessionId: id,
+          readerSessionStart: Date.now(),
         }))
         return id
       },
       updateReaderSession: (id, patch) => set(s => ({
         readerSessions: s.readerSessions.map(rs => rs.id === id ? { ...rs, ...patch } : rs),
       })),
+
+      readerLines: [],
+      readerCaptureOn: false,
+      setReaderCaptureOn: (on) => set({ readerCaptureOn: on }),
+      readerPendingOverflow: null,
+      readerNewWordsAdded: 0,
+      incrementReaderNewWordsAdded: () => set(s => ({ readerNewWordsAdded: s.readerNewWordsAdded + 1 })),
+      readerSessionId: null,
+      readerSessionStart: 0,
+
+      // Shared ingestion path for both pasted text and live Textractor capture events.
+      // Japanese text becomes a new line (prepended — newest on top). Non-Japanese text is
+      // treated as the translation for whichever Japanese line came immediately before it,
+      // which is how a fan-translation patch's dual JP/EN hooks show up through Capture Mode.
+      ingestReaderTexts: (texts) => {
+        const cleaned = texts.map(t => t.trim()).filter(Boolean)
+        if (cleaned.length === 0) return
+
+        const newLines: ReaderLine[] = []
+        const translationById = new Map<string, string>()
+
+        for (const text of cleaned) {
+          if (READER_JAPANESE_RE.test(text)) {
+            const id = `ln_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+            newLines.push({ id, text, tokens: null, translation: null })
+            lastJpLineId = id
+          } else if (lastJpLineId) {
+            translationById.set(lastJpLineId, text)
+          }
+        }
+
+        if (newLines.length === 0 && translationById.size === 0) return
+
+        const newLinesWithTranslation = newLines.map(l =>
+          translationById.has(l.id) ? { ...l, translation: translationById.get(l.id)! } : l
+        )
+
+        set(s => ({
+          readerLines: [
+            ...newLinesWithTranslation,
+            ...s.readerLines.map(l => translationById.has(l.id) ? { ...l, translation: translationById.get(l.id)! } : l),
+          ],
+        }))
+
+        newLines.forEach(line => {
+          import('../lib/tokenizer').then(({ tokenize }) => tokenize(line.text))
+            .then(tokens => set(s => ({
+              readerLines: s.readerLines.map(l => l.id === line.id ? { ...l, tokens } : l),
+            })))
+            .catch(() => toast.error('Failed to tokenize a line'))
+        })
+      },
+
+      addReaderText: (raw) => {
+        const rawTexts = raw.split('\n').map(l => l.trim()).filter(Boolean)
+        if (rawTexts.length === 0) return
+
+        // Cap how much Japanese text we tokenize in one go so pasting a whole chapter doesn't lock up the UI.
+        let jpCharCount = 0
+        let cutoff = rawTexts.length
+        for (let i = 0; i < rawTexts.length; i++) {
+          if (READER_JAPANESE_RE.test(rawTexts[i])) {
+            jpCharCount += rawTexts[i].length
+            if (jpCharCount > READER_CHAR_CAP) { cutoff = i; break }
+          }
+        }
+        const toProcess = rawTexts.slice(0, Math.max(cutoff, 1))
+        const overflow = rawTexts.slice(toProcess.length)
+
+        get().ingestReaderTexts(toProcess)
+        set({ readerPendingOverflow: overflow.length > 0 ? overflow.join('\n') : null })
+      },
+
+      loadMoreReaderOverflow: () => {
+        const overflow = get().readerPendingOverflow
+        if (!overflow) return
+        set({ readerPendingOverflow: null })
+        get().addReaderText(overflow)
+      },
     }),
     {
       name: 'nihongo-sensei-v2',
@@ -541,8 +657,15 @@ export const useStore = create<AppState>()(
         newCardsSeenDate: persisted.newCardsSeenDate ?? persisted.newCardsSeen_date ?? '',
       }),
       partialize: (state) => {
-        // apiKey always fresh from .env; lastVocabCardSnapshot is ephemeral
-        const { apiKey, lastVocabCardSnapshot, ...rest } = state as any
+        // apiKey always fresh from .env; lastVocabCardSnapshot is ephemeral.
+        // Reader live-session fields are runtime-only (see their declarations above) —
+        // survive tab switches via the in-memory store, reset on app restart, never on disk.
+        const {
+          apiKey, lastVocabCardSnapshot,
+          readerLines, readerCaptureOn, readerPendingOverflow, readerNewWordsAdded,
+          readerSessionId, readerSessionStart,
+          ...rest
+        } = state as any
         return rest
       },
     }

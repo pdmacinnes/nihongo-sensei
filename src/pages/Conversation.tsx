@@ -138,11 +138,31 @@ export default function Conversation() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const { jlptLevel, apiKey, startConversation, addMessage, endConversation, addXP, addVocabCard, vocabCards, conversations } = useStore()
+  const { jlptLevel, apiKey, currentConversation, startConversation, addMessage, endConversation, addXP, addVocabCard, vocabCards, conversations } = useStore()
+  const rehydratedRef = useRef(false)
 
   useEffect(() => {
     setSelectedLevel(jlptLevel)
   }, [jlptLevel])
+
+  // Resume an in-progress chat instead of dropping back to setup — the store's
+  // currentConversation survives navigating to other tabs and back, but the local
+  // UI state (messages, phase) does not, so rebuild it from the store once on mount.
+  useEffect(() => {
+    if (rehydratedRef.current) return
+    rehydratedRef.current = true
+    if (!currentConversation) return
+    setSelectedScenario(currentConversation.scenario)
+    setSelectedLevel(currentConversation.level)
+    setMessages(currentConversation.messages.map((m, i) => {
+      if (m.role === 'assistant') {
+        const parsed = parseStoredMessage(m.content)
+        return { id: m.id, role: 'assistant', japanese: parsed.japanese, translation: parsed.translation, corrections: parsed.corrections, timestamp: m.timestamp, isOpening: i === 0 }
+      }
+      return { id: m.id, role: 'user', japanese: m.content, timestamp: m.timestamp }
+    }))
+    setPhase('chat')
+  }, [currentConversation])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -177,8 +197,11 @@ export default function Conversation() {
       isOpening: true,
     }
     setMessages([welcomeMsg])
+    // Persist the opening greeting too, not just later exchanges — otherwise resuming
+    // this chat after switching tabs (before the first reply) rehydrates to an empty screen.
+    addMessage({ role: 'assistant', content: `${opening.jp}\n---\n${opening.en}\n\nCORRECTIONS:\n` })
     setTimeout(() => inputRef.current?.focus(), 100)
-  }, [selectedScenario, selectedLevel, startConversation])
+  }, [selectedScenario, selectedLevel, startConversation, addMessage])
 
   const sendMessage = useCallback(async () => {
     if (!input.trim() || isStreaming) return

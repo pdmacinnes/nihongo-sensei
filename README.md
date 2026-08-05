@@ -22,6 +22,7 @@ Set your Anthropic API key in the Settings page (required for AI conversation wi
 | Feature | Description |
 |---|---|
 | 💬 AI Conversation | Chat with Sakura, your AI tutor — streaming, corrections, scenarios |
+| 読解 Reader | Immersion reading — tokenized text with furigana, per-word lookup, and live VN capture |
 | 字 Kana Study | Interactive hiragana/katakana drill with progress tracking |
 | 📚 Vocabulary SRS | Spaced repetition flashcards (SM-2 algorithm) |
 | 🔥 Streaks & XP | Daily streaks and experience points |
@@ -35,6 +36,19 @@ Set your Anthropic API key in the Settings page (required for AI conversation wi
 - Every response includes an **English translation** (collapsible)
 - **Corrections panel** shows grammar/vocabulary feedback after each exchange
 - Quick-phrase buttons for common learner phrases
+
+## Reader (Immersion Reading)
+
+Paste any Japanese text — or capture it live from a visual novel — and get an instant reading aid:
+
+- Text is tokenized client-side (kuromoji.js) with **furigana** shown above kanji
+- Tap any word for its reading, part of speech, and an English gloss (checks your own deck first, falls back to AI lookup)
+- Each word lookup also shows a **frequency badge** (very common → rare) and flags when a word is **context-dependent**, with a short note on what changes
+- **+ Add to deck** saves a word straight into the same SRS system as the rest of the app, with the sentence it came from as context
+- Newest text appears at the top, so you're not scrolling down as you read
+- Live session stats: characters read, unique words, new words added, reading speed
+
+**Capture Mode** (desktop app only): pairs with [Textractor](https://github.com/Artikash/Textractor) (free, open-source VN text hooker). Enable Textractor's Clipboard extension and Nihongo Sensei will auto-pull new lines as you play — no copy-paste needed. If the VN has a translation patch and Textractor is hooked to both languages, the English attaches automatically as each line's translation. Capture keeps running even if you switch to another tab. In-app setup instructions are on the Reader page.
 
 ## Desktop App (Electron)
 

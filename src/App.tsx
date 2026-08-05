@@ -71,6 +71,27 @@ function CloudSyncManager() {
   return null
 }
 
+function ReaderCaptureManager() {
+  const captureOn = useStore(s => s.readerCaptureOn)
+  const ingestReaderTexts = useStore(s => s.ingestReaderTexts)
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
+  // Owns the clipboard-capture subscription independent of whether the Reader page is
+  // currently mounted, so switching to another tab (e.g. to fix an accidental add in
+  // Vocab) doesn't stop Textractor capture running in the background.
+  useEffect(() => {
+    if (!isElectron || !captureOn) return
+    window.electronAPI!.startCapture()
+    const unsubscribe = window.electronAPI!.onCaptureText(text => ingestReaderTexts([text]))
+    return () => {
+      unsubscribe()
+      window.electronAPI!.stopCapture()
+    }
+  }, [isElectron, captureOn, ingestReaderTexts])
+
+  return null
+}
+
 function LevelUpTracker() {
   const xp = useStore(s => s.xp)
   const level = Math.floor(xp / 100)
@@ -108,6 +129,7 @@ export default function App() {
       <DarkModeInit />
       <LevelUpTracker />
       <CloudSyncManager />
+      <ReaderCaptureManager />
       <HashRouter>
         {!hasCompletedOnboarding ? (
           <Onboarding />

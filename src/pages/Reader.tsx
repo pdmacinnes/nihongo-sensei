@@ -1,17 +1,10 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Anthropic from '@anthropic-ai/sdk'
 import toast from 'react-hot-toast'
-import { useStore } from '../store'
-import { tokenize, preloadTokenizer, Token } from '../lib/tokenizer'
+import { useStore, READER_JAPANESE_RE, READER_CHAR_CAP } from '../store'
+import { preloadTokenizer, Token } from '../lib/tokenizer'
 import { VOCAB_DATA } from '../lib/vocab-data'
-
-interface ReaderLine {
-  id: string
-  text: string
-  tokens: Token[] | null
-  translation: string | null
-}
 
 interface WordInfo {
   gloss: string
@@ -42,9 +35,6 @@ const FREQUENCY_STYLES: Record<string, string> = {
   'rare': 'bg-sakura/10 text-sakura border-sakura/25',
 }
 
-const JAPANESE_RE = /[぀-ヿ一-鿿]/
-const CHAR_CAP = 2000
-
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
   const min = Math.floor(totalSec / 60)
@@ -67,34 +57,33 @@ function TokenSpan({ token, onClick }: { token: Token; onClick: () => void }) {
 }
 
 export default function Reader() {
-  const { apiKey, jlptLevel, customWords, addCustomWord, startReaderSession, updateReaderSession } = useStore()
-  const [lines, setLines] = useState<ReaderLine[]>([])
+  const {
+    apiKey, jlptLevel, customWords, addCustomWord,
+    startReaderSession, updateReaderSession,
+    readerLines: lines, readerCaptureOn: captureOn, setReaderCaptureOn: setCaptureOn,
+    readerPendingOverflow: pendingOverflow, readerNewWordsAdded: newWordsAdded, incrementReaderNewWordsAdded,
+    readerSessionId, readerSessionStart,
+    addReaderText, loadMoreReaderOverflow,
+  } = useStore()
+
   const [input, setInput] = useState('')
-  const [pendingOverflow, setPendingOverflow] = useState<string | null>(null)
   const [tokenizerReady, setTokenizerReady] = useState(false)
   const [tokenizerError, setTokenizerError] = useState(false)
   const [activeWord, setActiveWord] = useState<{ lineText: string; token: Token } | null>(null)
   const [currentInfo, setCurrentInfo] = useState<WordInfo | null>(null)
   const [infoLoading, setInfoLoading] = useState(false)
   const [infoCache, setInfoCache] = useState<Record<string, WordInfo>>({})
-  const [newWordsAdded, setNewWordsAdded] = useState(0)
   const [now, setNow] = useState(Date.now())
-  const [captureOn, setCaptureOn] = useState(false)
   const [showCaptureHelp, setShowCaptureHelp] = useState(false)
 
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI
-  const startedRef = useRef(false)
-  const sessionIdRef = useRef<string | null>(null)
-  const sessionStartRef = useRef(Date.now())
-  // Tracks the most recently added Japanese line so a later, separate non-Japanese
-  // capture event (Textractor's translated-text hook) can be paired to it as its translation.
-  const lastJpLineRef = useRef<{ id: string } | null>(null)
 
   useEffect(() => {
-    if (startedRef.current) return
-    startedRef.current = true
-    sessionStartRef.current = Date.now()
-    sessionIdRef.current = startReaderSession('manual')
+    // readerSessionId lives in the store, not a local ref, so this only ever creates
+    // one session — remounting this page (e.g. after switching tabs) won't start another.
+    if (!useStore.getState().readerSessionId) {
+      startReaderSession('manual')
+    }
     preloadTokenizer()
       .then(() => setTokenizerReady(true))
       .catch(() => setTokenizerError(true))
@@ -109,9 +98,9 @@ export default function Reader() {
     const charsRead = lines.reduce((sum, l) => sum + l.text.length, 0)
     const uniqueWords = new Set<string>()
     lines.forEach(l => l.tokens?.forEach(t => {
-      if (JAPANESE_RE.test(t.surface)) uniqueWords.add(t.basicForm)
+      if (READER_JAPANESE_RE.test(t.surface)) uniqueWords.add(t.basicForm)
     }))
-    const elapsedMs = now - sessionStartRef.current
+    const elapsedMs = now - (readerSessionStart || now)
     const elapsedMin = Math.max(elapsedMs / 60000, 1 / 60)
     return {
       charsRead,
@@ -120,105 +109,33 @@ export default function Reader() {
       elapsedMs,
       speed: Math.round(charsRead / elapsedMin),
     }
-  }, [lines, now])
+  }, [lines, now, readerSessionStart])
 
   useEffect(() => {
-    if (!sessionIdRef.current) return
-    updateReaderSession(sessionIdRef.current, {
+    if (!readerSessionId) return
+    updateReaderSession(readerSessionId, {
       linesRead: stats.linesRead,
       charsRead: stats.charsRead,
       uniqueWordIds: stats.uniqueWordIds,
       newWordsAdded,
     })
-  }, [stats.linesRead, stats.charsRead, stats.uniqueWordIds.length, newWordsAdded, updateReaderSession])
-
-  // Shared ingestion path for both pasted text and live Textractor capture events.
-  // Japanese text becomes a new line (prepended — newest on top). Non-Japanese text is
-  // treated as the translation for whichever Japanese line came immediately before it,
-  // which is how a fan-translation patch's dual JP/EN hooks show up through Capture Mode.
-  const ingestTexts = useCallback((texts: string[]) => {
-    const cleaned = texts.map(t => t.trim()).filter(Boolean)
-    if (cleaned.length === 0) return
-
-    const newLines: ReaderLine[] = []
-    const translationById = new Map<string, string>()
-
-    for (const text of cleaned) {
-      if (JAPANESE_RE.test(text)) {
-        const id = `ln_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-        newLines.push({ id, text, tokens: null, translation: null })
-        lastJpLineRef.current = { id }
-      } else if (lastJpLineRef.current) {
-        translationById.set(lastJpLineRef.current.id, text)
-      }
-    }
-
-    if (newLines.length === 0 && translationById.size === 0) return
-
-    const newLinesWithTranslation = newLines.map(l =>
-      translationById.has(l.id) ? { ...l, translation: translationById.get(l.id)! } : l
-    )
-
-    setLines(prev => {
-      const updatedExisting = prev.map(l =>
-        translationById.has(l.id) ? { ...l, translation: translationById.get(l.id)! } : l
-      )
-      return [...newLinesWithTranslation, ...updatedExisting]
-    })
-
-    newLines.forEach(line => {
-      tokenize(line.text)
-        .then(tokens => setLines(prev => prev.map(l => l.id === line.id ? { ...l, tokens } : l)))
-        .catch(() => toast.error('Failed to tokenize a line'))
-    })
-  }, [])
-
-  const addLines = useCallback((raw: string) => {
-    const rawTexts = raw.split('\n').map(l => l.trim()).filter(Boolean)
-    if (rawTexts.length === 0) return
-
-    // Cap how much Japanese text we tokenize in one go so pasting a whole chapter doesn't lock up the UI.
-    let jpCharCount = 0
-    let cutoff = rawTexts.length
-    for (let i = 0; i < rawTexts.length; i++) {
-      if (JAPANESE_RE.test(rawTexts[i])) {
-        jpCharCount += rawTexts[i].length
-        if (jpCharCount > CHAR_CAP) { cutoff = i; break }
-      }
-    }
-    const toProcess = rawTexts.slice(0, Math.max(cutoff, 1))
-    const overflow = rawTexts.slice(toProcess.length)
-
-    ingestTexts(toProcess)
-
-    if (overflow.length > 0) {
-      setPendingOverflow(overflow.join('\n'))
-      toast(`Loaded first ${CHAR_CAP.toLocaleString()} characters — click "Load more" to continue`, { icon: '📄' })
-    }
-  }, [ingestTexts])
-
-  const loadMore = () => {
-    if (!pendingOverflow) return
-    const next = pendingOverflow
-    setPendingOverflow(null)
-    addLines(next)
-  }
+  }, [stats.linesRead, stats.charsRead, stats.uniqueWordIds.length, newWordsAdded, updateReaderSession, readerSessionId])
 
   const handleSubmit = () => {
     if (!tokenizerReady) return
-    addLines(input)
+    addReaderText(input)
     setInput('')
+    if (useStore.getState().readerPendingOverflow) {
+      toast(`Loaded first ${READER_CHAR_CAP.toLocaleString()} characters — click "Load more" to continue`, { icon: '📄' })
+    }
   }
 
-  useEffect(() => {
-    if (!isElectron || !captureOn || !tokenizerReady) return
-    window.electronAPI!.startCapture()
-    const unsubscribe = window.electronAPI!.onCaptureText(text => ingestTexts([text]))
-    return () => {
-      unsubscribe()
-      window.electronAPI!.stopCapture()
+  const loadMore = () => {
+    loadMoreReaderOverflow()
+    if (useStore.getState().readerPendingOverflow) {
+      toast(`Loaded next ${READER_CHAR_CAP.toLocaleString()} characters — click "Load more" to continue`, { icon: '📄' })
     }
-  }, [isElectron, captureOn, tokenizerReady, ingestTexts])
+  }
 
   const findLocalGloss = useCallback((token: Token): string | null => {
     const all = [...VOCAB_DATA, ...customWords]
@@ -294,7 +211,7 @@ CONTEXT_NOTE: <if yes, a short note under 15 words on what changes; if no, leave
       frequency: currentInfo?.frequency ?? undefined,
       contextNote: currentInfo?.contextDependent ? (currentInfo.contextNote ?? undefined) : undefined,
     })
-    setNewWordsAdded(n => n + 1)
+    incrementReaderNewWordsAdded()
     toast.success(`Added "${token.basicForm}" to your deck`)
     setActiveWord(null)
   }
@@ -334,12 +251,12 @@ CONTEXT_NOTE: <if yes, a short note under 15 words on what changes; if no, leave
           <div className="flex items-center justify-between">
             <div>
               <p className="text-ink-200 text-sm font-medium">Capture Mode</p>
-              <p className="text-ink-400 text-xs">Auto-pull new text copied by Textractor's clipboard extension</p>
+              <p className="text-ink-400 text-xs">Auto-pull new text copied by Textractor's clipboard extension — keeps running even if you switch tabs</p>
             </div>
             <button
-              onClick={() => setCaptureOn(v => !v)}
+              onClick={() => setCaptureOn(!captureOn)}
               disabled={!tokenizerReady}
-              className={`relative w-12 h-6 rounded-full transition-all duration-300 disabled:opacity-40 ${captureOn ? 'bg-jade' : 'bg-ink-500'}`}
+              className={`relative w-12 h-6 rounded-full transition-all duration-300 disabled:opacity-40 flex-shrink-0 ml-3 ${captureOn ? 'bg-jade' : 'bg-ink-500'}`}
             >
               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ${captureOn ? 'left-6.5' : 'left-0.5'}`} />
             </button>
