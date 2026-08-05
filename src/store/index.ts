@@ -72,6 +72,7 @@ export interface DailyXpEntry {
 export interface ReaderSession {
   id: string
   startedAt: number
+  updatedAt: number
   source: 'manual' | 'capture'
   sourceTitle?: string
   linesRead: number
@@ -193,7 +194,7 @@ interface AppState {
   // VN/Immersion Reader
   readerSessions: ReaderSession[]
   startReaderSession: (source: 'manual' | 'capture', sourceTitle?: string) => string
-  updateReaderSession: (id: string, patch: Partial<Omit<ReaderSession, 'id' | 'startedAt'>>) => void
+  updateReaderSession: (id: string, patch: Partial<Omit<ReaderSession, 'id' | 'startedAt' | 'updatedAt'>>) => void
 
   // Reader live session — deliberately NOT persisted to disk (see partialize below).
   // Lives in the store rather than component state so it survives navigating to other
@@ -542,19 +543,20 @@ export const useStore = create<AppState>()(
       readerSessions: [],
       startReaderSession: (source, sourceTitle) => {
         const id = `rs_${Date.now()}`
+        const now = Date.now()
         set(s => ({
           // Cap history so this doesn't grow localStorage forever across months of daily use.
           readerSessions: [...s.readerSessions, {
-            id, startedAt: Date.now(), source, sourceTitle,
+            id, startedAt: now, updatedAt: now, source, sourceTitle,
             linesRead: 0, charsRead: 0, uniqueWordIds: [], newWordsAdded: 0,
           }].slice(-200),
           readerSessionId: id,
-          readerSessionStart: Date.now(),
+          readerSessionStart: now,
         }))
         return id
       },
       updateReaderSession: (id, patch) => set(s => ({
-        readerSessions: s.readerSessions.map(rs => rs.id === id ? { ...rs, ...patch } : rs),
+        readerSessions: s.readerSessions.map(rs => rs.id === id ? { ...rs, ...patch, updatedAt: Date.now() } : rs),
       })),
 
       readerLines: [],

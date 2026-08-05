@@ -42,6 +42,14 @@ function formatDuration(ms: number): string {
   return min > 0 ? `${min}m ${sec}s` : `${sec}s`
 }
 
+function formatSessionDate(ts: number): string {
+  const d = new Date(ts)
+  const today = new Date()
+  const isToday = d.toDateString() === today.toDateString()
+  const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return isToday ? `Today, ${time}` : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}, ${time}`
+}
+
 function TokenSpan({ token, onClick }: { token: Token; onClick: () => void }) {
   if (!token.surface.trim()) return <span>{token.surface}</span>
   const clickable = 'cursor-pointer hover:bg-sakura/10 rounded transition-colors px-0.5 -mx-0.5'
@@ -59,7 +67,7 @@ function TokenSpan({ token, onClick }: { token: Token; onClick: () => void }) {
 export default function Reader() {
   const {
     apiKey, jlptLevel, customWords, addCustomWord,
-    startReaderSession, updateReaderSession,
+    startReaderSession, updateReaderSession, readerSessions,
     readerLines: lines, readerCaptureOn: captureOn, setReaderCaptureOn: setCaptureOn,
     readerPendingOverflow: pendingOverflow, readerNewWordsAdded: newWordsAdded, incrementReaderNewWordsAdded,
     readerSessionId, readerSessionStart,
@@ -75,6 +83,7 @@ export default function Reader() {
   const [infoCache, setInfoCache] = useState<Record<string, WordInfo>>({})
   const [now, setNow] = useState(Date.now())
   const [showCaptureHelp, setShowCaptureHelp] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
 
   const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
@@ -110,6 +119,12 @@ export default function Reader() {
       speed: Math.round(charsRead / elapsedMin),
     }
   }, [lines, now, readerSessionStart])
+
+  const pastSessions = useMemo(() => {
+    return [...readerSessions]
+      .filter(rs => rs.id !== readerSessionId)
+      .sort((a, b) => b.startedAt - a.startedAt)
+  }, [readerSessions, readerSessionId])
 
   useEffect(() => {
     if (!readerSessionId) return
@@ -244,6 +259,44 @@ CONTEXT_NOTE: <if yes, a short note under 15 words on what changes; if no, leave
           <p className="text-ink-400 text-xs">{stats.speed} chars/min</p>
         </div>
       </div>
+
+      {pastSessions.length > 0 && (
+        <div className="card mb-5">
+          <button
+            onClick={() => setShowHistory(v => !v)}
+            className="text-xs text-sakura font-medium flex items-center gap-1"
+          >
+            {showHistory ? '▲ Hide' : '▼ Show'} reading history ({pastSessions.length} session{pastSessions.length === 1 ? '' : 's'})
+          </button>
+          <AnimatePresence>
+            {showHistory && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="mt-3 pt-3 border-t border-border overflow-hidden"
+              >
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {pastSessions.map(session => (
+                    <div key={session.id} className="flex items-center justify-between text-sm p-2 rounded-lg bg-bg-primary">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-base flex-shrink-0">{session.source === 'capture' ? '🎮' : '📋'}</span>
+                        <div className="min-w-0">
+                          <p className="text-ink-200 font-medium truncate">{formatSessionDate(session.startedAt)}</p>
+                          <p className="text-ink-400 text-xs">{formatDuration(session.updatedAt - session.startedAt)} · {session.source === 'capture' ? 'Capture Mode' : 'Manual paste'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-ink-400 flex-shrink-0">
+                        <span>{session.charsRead.toLocaleString()} chars</span>
+                        <span>{session.uniqueWordIds.length} words</span>
+                        {session.newWordsAdded > 0 && <span className="text-jade font-medium">+{session.newWordsAdded}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      )}
 
       {/* Capture Mode */}
       {isElectron && (
