@@ -10,7 +10,7 @@ export default function Onboarding() {
   const [level, setLevel] = useState<'N5' | 'N4' | 'N3' | 'N2' | 'N1'>('N5')
   const { setUsername, setJlptLevel, completeOnboarding } = useStore()
 
-  const next = () => setStep(s => s + 1)
+  const next = () => setStep(s => Math.min(s + 1, STEPS.length - 1))
   const finish = () => {
     setUsername(name || 'Learner')
     setJlptLevel(level)

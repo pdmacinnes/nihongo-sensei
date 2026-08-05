@@ -504,10 +504,11 @@ export const useStore = create<AppState>()(
       startReaderSession: (source, sourceTitle) => {
         const id = `rs_${Date.now()}`
         set(s => ({
+          // Cap history so this doesn't grow localStorage forever across months of daily use.
           readerSessions: [...s.readerSessions, {
             id, startedAt: Date.now(), source, sourceTitle,
             linesRead: 0, charsRead: 0, uniqueWordIds: [], newWordsAdded: 0,
-          }],
+          }].slice(-200),
         }))
         return id
       },

@@ -1,5 +1,5 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, lazy, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 import toast from 'react-hot-toast'
 import confetti from 'canvas-confetti'
@@ -14,10 +14,13 @@ import Settings from './pages/Settings'
 import GrammarStudy from './pages/GrammarStudy'
 import Guide from './pages/Guide'
 import ReadingPractice from './pages/ReadingPractice'
-import Reader from './pages/Reader'
 import KanjiStudy from './pages/KanjiStudy'
 import Resources from './pages/Resources'
 import Onboarding from './pages/Onboarding'
+
+// Lazy-loaded: pulls in kuromoji's ~600KB tokenizer + dictionary loader, which
+// no other page needs — keeping it out of the main chunk speeds up every other page.
+const Reader = lazy(() => import('./pages/Reader'))
 import { useStore } from './store'
 import { initFirebase, uploadProgress, downloadProgress, isFirebaseConfigured } from './lib/firebase'
 
@@ -118,7 +121,11 @@ export default function App() {
               <Route path="grammar" element={<GrammarStudy />} />
               <Route path="guide" element={<Guide />} />
               <Route path="reading" element={<ReadingPractice />} />
-              <Route path="reader" element={<Reader />} />
+              <Route path="reader" element={
+                <Suspense fallback={<div className="p-6 text-ink-400 text-sm">Loading…</div>}>
+                  <Reader />
+                </Suspense>
+              } />
               <Route path="kanji" element={<KanjiStudy />} />
               <Route path="resources" element={<Resources />} />
               <Route path="progress" element={<ProgressPage />} />

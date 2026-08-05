@@ -30,6 +30,7 @@ const POS_LABELS: Record<string, string> = {
 }
 
 const JAPANESE_RE = /[぀-ヿ一-鿿]/
+const CHAR_CAP = 2000
 
 function formatDuration(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
@@ -56,6 +57,7 @@ export default function Reader() {
   const { apiKey, jlptLevel, customWords, addCustomWord, startReaderSession, updateReaderSession } = useStore()
   const [lines, setLines] = useState<ReaderLine[]>([])
   const [input, setInput] = useState('')
+  const [pendingOverflow, setPendingOverflow] = useState<string | null>(null)
   const [tokenizerReady, setTokenizerReady] = useState(false)
   const [tokenizerError, setTokenizerError] = useState(false)
   const [activeWord, setActiveWord] = useState<{ lineText: string; token: Token } | null>(null)
@@ -117,7 +119,18 @@ export default function Reader() {
   const addLines = useCallback(async (raw: string) => {
     const rawLines = raw.split('\n').map(l => l.trim()).filter(Boolean)
     if (rawLines.length === 0) return
-    for (const text of rawLines) {
+
+    // Cap how much we tokenize in one go so pasting a whole chapter doesn't lock up the UI.
+    let charCount = 0
+    let cutoff = rawLines.length
+    for (let i = 0; i < rawLines.length; i++) {
+      charCount += rawLines[i].length
+      if (charCount > CHAR_CAP) { cutoff = i; break }
+    }
+    const toProcess = rawLines.slice(0, Math.max(cutoff, 1))
+    const overflow = rawLines.slice(toProcess.length)
+
+    for (const text of toProcess) {
       const id = `ln_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
       setLines(prev => [...prev, { id, text, tokens: null, translation: null, translating: false }])
       try {
@@ -127,7 +140,19 @@ export default function Reader() {
         toast.error('Failed to tokenize a line')
       }
     }
+
+    if (overflow.length > 0) {
+      setPendingOverflow(overflow.join('\n'))
+      toast(`Loaded first ${CHAR_CAP.toLocaleString()} characters — click "Load more" below to continue`, { icon: '📄' })
+    }
   }, [])
+
+  const loadMore = () => {
+    if (!pendingOverflow) return
+    const next = pendingOverflow
+    setPendingOverflow(null)
+    addLines(next)
+  }
 
   const handleSubmit = () => {
     if (!tokenizerReady) return
@@ -197,7 +222,9 @@ export default function Reader() {
     if (local) { setCurrentGloss(local); return }
     if (glossCache[activeWord.token.basicForm]) { setCurrentGloss(glossCache[activeWord.token.basicForm]); return }
     setCurrentGloss(null)
-    fetchGloss(activeWord.token).then(g => setCurrentGloss(g))
+    let cancelled = false
+    fetchGloss(activeWord.token).then(g => { if (!cancelled) setCurrentGloss(g) })
+    return () => { cancelled = true }
   }, [activeWord, findLocalGloss, glossCache, fetchGloss])
 
   const handleAddWord = () => {
@@ -339,10 +366,15 @@ export default function Reader() {
             )}
           </motion.div>
         ))}
-        {lines.length === 0 && (
+        {lines.length === 0 && !pendingOverflow && (
           <div className="text-center text-ink-400 text-sm py-10">
             No text yet — paste something above to get started.
           </div>
+        )}
+        {pendingOverflow && (
+          <button onClick={loadMore} className="btn-secondary w-full py-3">
+            Load more ({pendingOverflow.length.toLocaleString()} characters remaining)
+          </button>
         )}
       </div>
 
