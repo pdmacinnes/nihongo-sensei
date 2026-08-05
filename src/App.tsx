@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useRef, useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 import toast from 'react-hot-toast'
@@ -104,7 +104,7 @@ export default function App() {
       <DarkModeInit />
       <LevelUpTracker />
       <CloudSyncManager />
-      <BrowserRouter>
+      <HashRouter>
         {!hasCompletedOnboarding ? (
           <Onboarding />
         ) : (
@@ -125,7 +125,7 @@ export default function App() {
             </Route>
           </Routes>
         )}
-      </BrowserRouter>
+      </HashRouter>
     </>
     </ErrorBoundary>
   )
