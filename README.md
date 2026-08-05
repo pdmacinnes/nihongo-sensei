@@ -6,6 +6,8 @@
 
 <p align="center">A Japanese learning app with AI conversation practice, vocab SRS, kana drills, and progress tracking.</p>
 
+<p align="center"><strong><a href="https://github.com/pdmacinnes/nihongo-sensei/releases/latest">⬇ Download the desktop app</a></strong> — Windows installer or portable .exe, no build required</p>
+
 ## Quick Start
 
 ```
@@ -52,7 +54,7 @@ Paste any Japanese text — or capture it live from a visual novel — and get a
 
 ## Desktop App (Electron)
 
-The app also runs as a standalone Windows desktop app — no browser or hosting required.
+The app also runs as a standalone Windows desktop app — no browser or hosting required. Grab a pre-built copy from the [latest release](https://github.com/pdmacinnes/nihongo-sensei/releases/latest), or build it yourself:
 
 ```
 npm run electron:dev      # run in a desktop window with hot reload
