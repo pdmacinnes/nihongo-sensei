@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Link } from 'react-router-dom'
 import Anthropic from '@anthropic-ai/sdk'
 import toast from 'react-hot-toast'
 import { useStore, READER_JAPANESE_RE, READER_CHAR_CAP } from '../store'
 import { preloadTokenizer, Token } from '../lib/tokenizer'
 import { preloadDictionary, lookupWord, lookupFrequency } from '../lib/dictionary'
 import { VOCAB_DATA } from '../lib/vocab-data'
+import { matchGrammarPatterns } from '../lib/grammar-data'
 
 interface WordInfo {
   gloss: string
@@ -147,6 +149,11 @@ export default function Reader() {
       speed: Math.round(charsRead / elapsedMin),
     }
   }, [lines, now, readerSessionStart])
+
+  const matchedGrammar = useMemo(() => {
+    if (!activeWord) return []
+    return matchGrammarPatterns(activeWord.lineText)
+  }, [activeWord])
 
   const pastSessions = useMemo(() => {
     return [...readerSessions]
@@ -487,6 +494,20 @@ CONTEXT_NOTE: <if yes, a short note under 15 words on what changes; if no, leave
               )}
               {currentInfo?.contextDependent && currentInfo.contextNote && (
                 <p className="text-ink-400 text-xs text-center mb-4">{currentInfo.contextNote}</p>
+              )}
+              {matchedGrammar.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 justify-center mb-2">
+                  {matchedGrammar.map(g => (
+                    <Link
+                      key={g.id}
+                      to="/grammar"
+                      onClick={() => setActiveWord(null)}
+                      className="text-xs px-2 py-0.5 rounded-full border font-medium bg-jade/10 text-jade border-jade/25 japanese-text hover:bg-jade/20 transition-colors"
+                    >
+                      文法: {g.pattern}
+                    </Link>
+                  ))}
+                </div>
               )}
               <div className="flex gap-3 mt-4">
                 <button onClick={() => setActiveWord(null)} className="btn-secondary flex-1">Close</button>

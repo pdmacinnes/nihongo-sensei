@@ -1344,3 +1344,43 @@ export const GRAMMAR_DATA: GrammarPoint[] = [
 export const GRAMMAR_LEVELS = ['N5', 'N4', 'N3', 'N2', 'N1'] as const
 export const N5_GRAMMAR = GRAMMAR_DATA.filter(g => g.level === 'N5')
 export const N4_GRAMMAR = GRAMMAR_DATA.filter(g => g.level === 'N4')
+
+// Heuristic, not real parsing: a pattern like "〜は〜です" splits into fixed slots ["は", "です"]
+// (the 〜 markers stand for whatever fills the blanks) — a sentence "matches" if every slot
+// appears in it. A slot can itself list "/"-separated alternatives (e.g. "〜ではありません /
+// じゃないです" — either form counts).
+//
+// Patterns are written in plain/dictionary form (する, ている, できる...) but real sentences
+// are very often polite ます-form (します, しています, できます...) — testing against this
+// data's own 360 example sentences showed ~30% wouldn't match their own pattern without
+// accounting for this, so it's not a rare edge case worth ignoring. Japanese conjugation only
+// ever changes trailing kana, never the stem, so for slots of 3+ characters we also accept a
+// match on the slot with its last character dropped (e.g. "ている" → "てい" matches inside
+// "食べています"). Slots under 3 characters are left exact-only since a 1-character stem
+// (e.g. from "する", "ある") would match almost anything.
+//
+// This still can't distinguish two required slots ("〜は〜です") from two full alternative
+// constructions written the same way (e.g. "〜前に / 〜後で" means "before" OR "after", not
+// both) — a handful of patterns with two 〜 markers and a "/" fall into that rarer shape and
+// may under-match. Accepted, documented heuristic limitations, not exhaustive parsing.
+function patternSlots(pattern: string): string[][] {
+  return pattern
+    .split('〜')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(slot => slot.split('/').map(alt => alt.trim()).filter(Boolean))
+}
+
+function slotMatches(alts: string[], sentence: string): boolean {
+  return alts.some(alt =>
+    sentence.includes(alt) || (alt.length >= 3 && sentence.includes(alt.slice(0, -1)))
+  )
+}
+
+export function matchGrammarPatterns(sentence: string): GrammarPoint[] {
+  if (!sentence) return []
+  return GRAMMAR_DATA.filter(g => {
+    const slots = patternSlots(g.pattern)
+    return slots.length > 0 && slots.every(alts => slotMatches(alts, sentence))
+  })
+}
