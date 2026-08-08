@@ -12,7 +12,7 @@ export default function ProgressPage() {
   const { streak, totalXp, jlptLevel, vocabCards, kanaProgress,
           conversations, totalConversations, totalKanaCorrect, totalKanaIncorrect,
           getKanaMastery, dailyNewCardLimit, dailyXpHistory, wrongAnswerLog,
-          clearWrongAnswerLog } = useStore()
+          clearWrongAnswerLog, readerSessions } = useStore()
 
   const xpLevel = Math.floor(totalXp / 100)
   const kanaMastery = getKanaMastery()
@@ -72,6 +72,35 @@ export default function ProgressPage() {
     })
   }, [vocabCards])
   const maxForecast = Math.max(...forecastData.map(d => d.count), 1)
+
+  const charsByDay = useMemo(() => {
+    const map: Record<string, number> = {}
+    readerSessions.forEach(s => {
+      const day = new Date(s.startedAt).toISOString().split('T')[0]
+      map[day] = (map[day] || 0) + s.charsRead
+    })
+    return map
+  }, [readerSessions])
+  const readerChartData = last30Days.map(date => ({ date, chars: charsByDay[date] || 0 }))
+  const maxReaderChars = Math.max(...readerChartData.map(d => d.chars), 1)
+
+  const totalCharsRead = readerSessions.reduce((sum, s) => sum + s.charsRead, 0)
+  const totalWordsMined = readerSessions.reduce((sum, s) => sum + s.newWordsAdded, 0)
+  const daysRead = new Set(readerSessions.map(s => new Date(s.startedAt).toISOString().split('T')[0])).size
+  const captureCount = readerSessions.filter(s => s.source === 'capture').length
+  const manualCount = readerSessions.length - captureCount
+
+  const bySource = useMemo(() => {
+    const map: Record<string, { chars: number; words: number; sessions: number }> = {}
+    readerSessions.forEach(s => {
+      const key = s.sourceTitle || (s.source === 'capture' ? 'Capture Mode' : 'Manual paste')
+      if (!map[key]) map[key] = { chars: 0, words: 0, sessions: 0 }
+      map[key].chars += s.charsRead
+      map[key].words += s.newWordsAdded
+      map[key].sessions += 1
+    })
+    return Object.entries(map).sort((a, b) => b[1].chars - a[1].chars).slice(0, 8)
+  }, [readerSessions])
 
   const BADGES = [
     { label: 'First Words', desc: 'Complete your first conversation', unlocked: totalConversations >= 1 },
@@ -274,6 +303,82 @@ export default function ProgressPage() {
           </div>
         </section>
       </div>
+
+      <section className="mb-8">
+        <h2 className="text-ink-200 font-semibold mb-3">Reading Immersion</h2>
+        {readerSessions.length === 0 ? (
+          <p className="text-ink-400 text-sm">No reading sessions yet — paste some Japanese text in Reader to get started.</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5 text-center">
+              <div className="border-b border-border pb-3">
+                <p className="text-ink-100 font-bold text-2xl">{totalCharsRead.toLocaleString()}</p>
+                <p className="text-ink-400 text-xs">Characters read</p>
+              </div>
+              <div className="border-b border-border pb-3">
+                <p className="text-jade font-bold text-2xl">{totalWordsMined}</p>
+                <p className="text-ink-400 text-xs">Words mined</p>
+              </div>
+              <div className="border-b border-border pb-3">
+                <p className="text-sakura font-bold text-2xl">{daysRead}</p>
+                <p className="text-ink-400 text-xs">Days read</p>
+              </div>
+              <div className="border-b border-border pb-3">
+                <p className="text-ink-100 font-bold text-2xl">{readerSessions.length}</p>
+                <p className="text-ink-400 text-xs">Sessions</p>
+              </div>
+            </div>
+
+            <p className="text-ink-400 text-xs mb-2">Characters read — last 30 days</p>
+            <div className="flex items-end gap-0.5 h-20 mb-1">
+              {readerChartData.map(d => {
+                const isToday = d.date === today.toISOString().split('T')[0]
+                const heightPct = d.chars > 0 ? Math.max((d.chars / maxReaderChars) * 100, 8) : 2
+                return (
+                  <div key={d.date} className="flex-1 flex flex-col items-center justify-end group relative" title={`${d.date}: ${d.chars} chars`}>
+                    <div
+                      className={`w-full rounded-t transition-all duration-500 ${
+                        isToday ? 'bg-sakura' : d.chars > 0 ? 'bg-jade/70 group-hover:bg-jade' : 'bg-bg-secondary'
+                      }`}
+                      style={{ height: `${heightPct}%` }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex justify-between text-xs text-ink-400 mb-5">
+              <span>30 days ago</span>
+              <span>Today</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <p className="text-ink-400 text-xs mb-2">Manual vs. Capture Mode</p>
+                <div className="flex h-2.5 rounded-full overflow-hidden bg-bg-secondary mb-2">
+                  {manualCount > 0 && <div className="bg-jade" style={{ width: `${(manualCount / readerSessions.length) * 100}%` }} />}
+                  {captureCount > 0 && <div className="bg-sakura" style={{ width: `${(captureCount / readerSessions.length) * 100}%` }} />}
+                </div>
+                <div className="flex gap-4 text-xs text-ink-400">
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-jade mr-1" />Manual · {manualCount}</span>
+                  <span><span className="inline-block w-2 h-2 rounded-full bg-sakura mr-1" />Capture · {captureCount}</span>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-ink-400 text-xs mb-2">By source</p>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {bySource.map(([name, s]) => (
+                    <div key={name} className="flex items-center justify-between text-sm">
+                      <span className="text-ink-200 truncate max-w-[60%]">{name}</span>
+                      <span className="text-ink-400 text-xs">{s.chars.toLocaleString()} chars · {s.words} words</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
 
       <section className="mb-8">
         <div className="flex items-center justify-between mb-3">
