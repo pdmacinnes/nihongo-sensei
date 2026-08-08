@@ -10,6 +10,7 @@ import {
   generateSyncCode, uploadProgress, downloadProgress,
 } from '../lib/firebase'
 import { scheduleStudyReminder, clearStudyReminder } from '../lib/reminders'
+import { VOCAB_DATA } from '../lib/vocab-data'
 
 export default function Settings() {
   const { username, setUsername, jlptLevel, setJlptLevel,
@@ -27,6 +28,7 @@ export default function Settings() {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [syncInput, setSyncInput] = useState('')
   const [syncing, setSyncing] = useState(false)
+  const [exportingAnki, setExportingAnki] = useState(false)
   const firebaseReady = isFirebaseConfigured()
 
   useEffect(() => { setLocalName(username) }, [username])
@@ -165,6 +167,43 @@ export default function Settings() {
     a.download = `nihongo-sensei-backup-${new Date().toISOString().split('T')[0]}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleAnkiExport = async () => {
+    const state = useStore.getState()
+    const allWords = [...VOCAB_DATA, ...state.customWords]
+    const words = state.vocabCards
+      .map(card => allWords.find(w => w.id === card.wordId))
+      .filter((w): w is typeof allWords[number] => !!w)
+      .map(w => ({
+        japanese: w.japanese,
+        reading: w.reading,
+        english: w.english,
+        sentenceJp: w.sentenceJp,
+        sentenceEn: w.sentenceEn,
+      }))
+
+    if (words.length === 0) {
+      toast.error('Add some words to your deck first')
+      return
+    }
+
+    setExportingAnki(true)
+    try {
+      const { buildAnkiApkg } = await import('../lib/anki-export')
+      const blob = await buildAnkiApkg(words)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `nihongo-sensei-${new Date().toISOString().split('T')[0]}.apkg`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast.success(`Exported ${words.length} card${words.length === 1 ? '' : 's'} to Anki ✓`)
+    } catch {
+      toast.error('Anki export failed — please try again')
+    } finally {
+      setExportingAnki(false)
+    }
   }
 
   const handleNotifications = async (enabled: boolean) => {
@@ -519,6 +558,15 @@ export default function Settings() {
                 ↑ Import
                 <input type="file" accept=".json" className="hidden" onChange={handleImport} />
               </label>
+            </div>
+            <div className="border-t border-border pt-3 flex items-center justify-between">
+              <div>
+                <p className="text-ink-200 text-sm font-medium">Export to Anki</p>
+                <p className="text-ink-400 text-xs">Download your vocab deck as an .apkg file to import into Anki</p>
+              </div>
+              <button type="button" onClick={handleAnkiExport} disabled={exportingAnki} className="btn-secondary text-sm px-4 disabled:opacity-50">
+                {exportingAnki ? '...' : '↓ Export'}
+              </button>
             </div>
             <div className="border-t border-border pt-3 flex items-center justify-between">
               <div>
