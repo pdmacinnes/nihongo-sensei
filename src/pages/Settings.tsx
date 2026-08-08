@@ -11,6 +11,8 @@ import {
 } from '../lib/firebase'
 import { scheduleStudyReminder, clearStudyReminder } from '../lib/reminders'
 import { VOCAB_DATA } from '../lib/vocab-data'
+import { KANJI_DATA } from '../lib/kanji-data'
+import { GRAMMAR_DATA } from '../lib/grammar-data'
 
 export default function Settings() {
   const { username, setUsername, jlptLevel, setJlptLevel,
@@ -29,6 +31,8 @@ export default function Settings() {
   const [syncInput, setSyncInput] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [exportingAnki, setExportingAnki] = useState(false)
+  const [exportingKanjiAnki, setExportingKanjiAnki] = useState(false)
+  const [exportingGrammarAnki, setExportingGrammarAnki] = useState(false)
   const firebaseReady = isFirebaseConfigured()
 
   useEffect(() => { setLocalName(username) }, [username])
@@ -169,6 +173,15 @@ export default function Settings() {
     URL.revokeObjectURL(url)
   }
 
+  const downloadApkg = (blob: Blob, filenameSuffix: string) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `nihongo-sensei-${filenameSuffix}-${new Date().toISOString().split('T')[0]}.apkg`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const handleAnkiExport = async () => {
     const state = useStore.getState()
     const allWords = [...VOCAB_DATA, ...state.customWords]
@@ -190,19 +203,61 @@ export default function Settings() {
 
     setExportingAnki(true)
     try {
-      const { buildAnkiApkg } = await import('../lib/anki-export')
-      const blob = await buildAnkiApkg(words)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `nihongo-sensei-${new Date().toISOString().split('T')[0]}.apkg`
-      a.click()
-      URL.revokeObjectURL(url)
+      const { buildVocabApkg } = await import('../lib/anki-export')
+      const blob = await buildVocabApkg(words)
+      downloadApkg(blob, 'vocab')
       toast.success(`Exported ${words.length} card${words.length === 1 ? '' : 's'} to Anki ✓`)
     } catch {
       toast.error('Anki export failed — please try again')
     } finally {
       setExportingAnki(false)
+    }
+  }
+
+  const handleKanjiAnkiExport = async () => {
+    const state = useStore.getState()
+    const entries = KANJI_DATA.filter(k => state.kanjiProgress[k.kanji])
+
+    if (entries.length === 0) {
+      toast.error('Practice some kanji in Kanji Study first')
+      return
+    }
+
+    setExportingKanjiAnki(true)
+    try {
+      const { buildKanjiApkg } = await import('../lib/anki-export')
+      const blob = await buildKanjiApkg(entries)
+      downloadApkg(blob, 'kanji')
+      toast.success(`Exported ${entries.length} kanji to Anki ✓`)
+    } catch {
+      toast.error('Anki export failed — please try again')
+    } finally {
+      setExportingKanjiAnki(false)
+    }
+  }
+
+  const handleGrammarAnkiExport = async () => {
+    const state = useStore.getState()
+    const practicedPatterns = new Set(
+      state.wrongAnswerLog.filter(e => e.type === 'grammar').map(e => e.grammarPattern)
+    )
+    const entries = GRAMMAR_DATA.filter(g => practicedPatterns.has(g.pattern))
+
+    if (entries.length === 0) {
+      toast.error('Practice some grammar points in Grammar Study first')
+      return
+    }
+
+    setExportingGrammarAnki(true)
+    try {
+      const { buildGrammarApkg } = await import('../lib/anki-export')
+      const blob = await buildGrammarApkg(entries)
+      downloadApkg(blob, 'grammar')
+      toast.success(`Exported ${entries.length} grammar point${entries.length === 1 ? '' : 's'} to Anki ✓`)
+    } catch {
+      toast.error('Anki export failed — please try again')
+    } finally {
+      setExportingGrammarAnki(false)
     }
   }
 
@@ -566,6 +621,24 @@ export default function Settings() {
               </div>
               <button type="button" onClick={handleAnkiExport} disabled={exportingAnki} className="btn-secondary text-sm px-4 disabled:opacity-50">
                 {exportingAnki ? '...' : '↓ Export'}
+              </button>
+            </div>
+            <div className="border-t border-border pt-3 flex items-center justify-between">
+              <div>
+                <p className="text-ink-200 text-sm font-medium">Export Kanji to Anki</p>
+                <p className="text-ink-400 text-xs">Download kanji you've practiced as an .apkg file</p>
+              </div>
+              <button type="button" onClick={handleKanjiAnkiExport} disabled={exportingKanjiAnki} className="btn-secondary text-sm px-4 disabled:opacity-50">
+                {exportingKanjiAnki ? '...' : '↓ Export'}
+              </button>
+            </div>
+            <div className="border-t border-border pt-3 flex items-center justify-between">
+              <div>
+                <p className="text-ink-200 text-sm font-medium">Export Grammar to Anki</p>
+                <p className="text-ink-400 text-xs">Download grammar points you've practiced as an .apkg file</p>
+              </div>
+              <button type="button" onClick={handleGrammarAnkiExport} disabled={exportingGrammarAnki} className="btn-secondary text-sm px-4 disabled:opacity-50">
+                {exportingGrammarAnki ? '...' : '↓ Export'}
               </button>
             </div>
             <div className="border-t border-border pt-3 flex items-center justify-between">

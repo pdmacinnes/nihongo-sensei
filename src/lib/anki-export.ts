@@ -1,29 +1,12 @@
-// Builds a real .apkg file (SQLite collection + zip) client-side, importable straight into Anki.
+// Builds real .apkg files (SQLite collection + zip) client-side, importable straight into Anki.
 // Schema mirrors genanki (https://github.com/kerrickstaley/genanki) — the same legacy
 // "collection.anki2" schema (ver 11) genanki produces, which Anki has kept import-compatible
 // for years. We hand-roll it instead of pulling in genanki's JS port because that port is
-// unmaintained (last published 2022, pinned to sql.js ^0.5.0) and this only needs one fixed
-// note type, not a general-purpose model builder.
+// unmaintained (last published 2022, pinned to sql.js ^0.5.0).
 import initSqlJs from 'sql.js'
 import type { Database } from 'sql.js'
 import JSZip from 'jszip'
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
-
-export interface AnkiExportWord {
-  japanese: string
-  reading: string
-  english: string
-  sentenceJp: string
-  sentenceEn: string
-}
-
-// Fixed IDs so repeated exports land in the same Anki deck/note type instead of duplicating it
-// (Anki matches by id, not name, when a package is re-imported).
-const MODEL_ID = 1754000000001
-const DECK_ID = 1754000000002
-const DECK_NAME = 'Nihongo Sensei'
-const MODEL_NAME = 'Nihongo Sensei Vocab'
-const FIELD_NAMES = ['Japanese', 'Reading', 'English', 'SentenceJP', 'SentenceEN']
 
 const APKG_SCHEMA = `
 CREATE TABLE col (
@@ -120,28 +103,45 @@ async function guidFor(...values: string[]): Promise<string> {
   return chars.reverse().join('')
 }
 
-function escapeHtml(s: string): string {
+// Callers use this to escape any raw text before slotting it into a field or a hand-built
+// HTML fragment (e.g. one field value containing several <br>-joined pieces) — escaping the
+// whole assembled field afterward would mangle the deliberate markup.
+export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
 }
 
-function buildModelJson(timestampSec: number) {
+export interface AnkiDeckSpec {
+  modelId: number
+  deckId: number
+  deckName: string
+  modelName: string
+  fieldNames: string[]
+  sortFieldIndex?: number
+  qfmt: string
+  afmt: string
+  css: string
+  // Each row's values align 1:1 with fieldNames, already final HTML (pre-escaped by the caller).
+  rows: string[][]
+}
+
+function buildModelJson(spec: AnkiDeckSpec, timestampSec: number) {
   return {
-    id: String(MODEL_ID),
-    name: MODEL_NAME,
+    id: String(spec.modelId),
+    name: spec.modelName,
     type: 0, // standard front/back, not cloze
     mod: timestampSec,
     usn: -1,
-    sortf: 0, // sort field index = Japanese
-    did: DECK_ID,
+    sortf: spec.sortFieldIndex ?? 0,
+    did: spec.deckId,
     tmpls: [
       {
         name: 'Card 1',
         ord: 0,
-        qfmt: '{{Japanese}}<br><span class="reading">{{Reading}}</span>',
-        afmt: '{{FrontSide}}<hr id="answer">{{English}}<br><br><div class="sentence">{{SentenceJP}}<br>{{SentenceEN}}</div>',
+        qfmt: spec.qfmt,
+        afmt: spec.afmt,
         bqfmt: '',
         bafmt: '',
         bfont: '',
@@ -149,7 +149,7 @@ function buildModelJson(timestampSec: number) {
         did: null,
       },
     ],
-    flds: FIELD_NAMES.map((name, ord) => ({
+    flds: spec.fieldNames.map((name, ord) => ({
       name,
       ord,
       sticky: false,
@@ -158,23 +158,23 @@ function buildModelJson(timestampSec: number) {
       size: 20,
       media: [],
     })),
-    css: '.card { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; font-size: 24px; text-align: center; color: #1a1a1a; background: #fafaf8; } .reading { font-size: 16px; color: #888; } .sentence { font-size: 16px; color: #555; margin-top: 8px; }',
+    css: spec.css,
     latexPre: '',
     latexPost: '',
     latexsvg: false,
-    // Card 1 requires the Japanese field (index 0) to be non-empty — this is the only
-    // template, so we hardcode the requirement instead of running genanki's mustache solver.
+    // Card 1 requires field 0 to be non-empty — this is the only template per model, so we
+    // hardcode the requirement instead of running genanki's mustache solver.
     req: [[0, 'all', [0]]],
     tags: [],
     vers: [],
   }
 }
 
-function buildDeckJson(timestampSec: number) {
+function buildDeckJson(spec: AnkiDeckSpec, timestampSec: number) {
   return {
-    id: DECK_ID,
+    id: spec.deckId,
     mod: timestampSec,
-    name: DECK_NAME,
+    name: spec.deckName,
     usn: -1,
     lrnToday: [0, 0],
     revToday: [0, 0],
@@ -189,23 +189,23 @@ function buildDeckJson(timestampSec: number) {
   }
 }
 
-function insertBaseCol(db: Database, timestampSec: number) {
+function insertBaseCol(db: Database, spec: AnkiDeckSpec, timestampSec: number) {
   const conf = {
-    curDeck: DECK_ID,
-    activeDecks: [DECK_ID],
+    curDeck: spec.deckId,
+    activeDecks: [spec.deckId],
     newSpread: 0,
     collapseTime: 1200,
     timeLim: 0,
     estTimes: true,
     dueCounts: true,
-    curModel: String(MODEL_ID),
+    curModel: String(spec.modelId),
     nextPos: 1,
     sortType: 'noteFld',
     sortBackwards: false,
     addToCur: true,
   }
-  const decks = { [String(DECK_ID)]: buildDeckJson(timestampSec) }
-  const models = { [String(MODEL_ID)]: buildModelJson(timestampSec) }
+  const decks = { [String(spec.deckId)]: buildDeckJson(spec, timestampSec) }
+  const models = { [String(spec.modelId)]: buildModelJson(spec, timestampSec) }
   const dconf = {
     '1': {
       id: 1,
@@ -236,37 +236,32 @@ function insertBaseCol(db: Database, timestampSec: number) {
   )
 }
 
-export async function buildAnkiApkg(words: AnkiExportWord[]): Promise<Blob> {
+// Generic core — one deck/model/set of notes per call, shared by the Vocab/Kanji/Grammar
+// export builders below.
+export async function buildAnkiApkg(spec: AnkiDeckSpec): Promise<Blob> {
   const SQL = await initSqlJs({ locateFile: () => sqlWasmUrl })
   const db = new SQL.Database()
   db.run(APKG_SCHEMA)
 
   const timestampMs = Date.now()
   const timestampSec = Math.floor(timestampMs / 1000)
-  insertBaseCol(db, timestampSec)
+  insertBaseCol(db, spec, timestampSec)
 
   let nextId = timestampMs
   const id = () => nextId++
 
   let cardPosition = 0
-  for (const word of words) {
-    const fields = [
-      escapeHtml(word.japanese),
-      escapeHtml(word.reading),
-      escapeHtml(word.english),
-      escapeHtml(word.sentenceJp),
-      escapeHtml(word.sentenceEn),
-    ]
+  for (const fields of spec.rows) {
     const guid = await guidFor(...fields)
     const noteId = id()
 
     db.run(
       `INSERT INTO notes VALUES (?, ?, ?, ?, -1, '  ', ?, ?, 0, 0, '')`,
-      [noteId, guid, MODEL_ID, timestampSec, fields.join('\x1f'), fields[0]]
+      [noteId, guid, spec.modelId, timestampSec, fields.join('\x1f'), fields[spec.sortFieldIndex ?? 0]]
     )
     db.run(
       `INSERT INTO cards VALUES (?, ?, ?, 0, ?, -1, 0, 0, ?, 0, 0, 0, 0, 0, 0, 0, 0, '')`,
-      [id(), noteId, DECK_ID, timestampSec, cardPosition++]
+      [id(), noteId, spec.deckId, timestampSec, cardPosition++]
     )
   }
 
@@ -277,4 +272,91 @@ export async function buildAnkiApkg(words: AnkiExportWord[]): Promise<Blob> {
   zip.file('collection.anki2', bytes)
   zip.file('media', '{}')
   return zip.generateAsync({ type: 'blob' })
+}
+
+// ── Vocab ──────────────────────────────────────────────────────────────────
+export interface AnkiExportWord {
+  japanese: string
+  reading: string
+  english: string
+  sentenceJp: string
+  sentenceEn: string
+}
+
+export function buildVocabApkg(words: AnkiExportWord[]): Promise<Blob> {
+  return buildAnkiApkg({
+    modelId: 1754000000001,
+    deckId: 1754000000002,
+    deckName: 'Nihongo Sensei',
+    modelName: 'Nihongo Sensei Vocab',
+    fieldNames: ['Japanese', 'Reading', 'English', 'SentenceJP', 'SentenceEN'],
+    qfmt: '{{Japanese}}<br><span class="reading">{{Reading}}</span>{{tts ja_JP:Japanese}}',
+    afmt: '{{FrontSide}}<hr id="answer">{{English}}<br><br><div class="sentence">{{SentenceJP}}<br>{{SentenceEN}}</div>{{tts ja_JP:SentenceJP}}',
+    css: '.card { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; font-size: 24px; text-align: center; color: #1a1a1a; background: #fafaf8; } .reading { font-size: 16px; color: #888; } .sentence { font-size: 16px; color: #555; margin-top: 8px; }',
+    rows: words.map(w => [
+      escapeHtml(w.japanese),
+      escapeHtml(w.reading),
+      escapeHtml(w.english),
+      escapeHtml(w.sentenceJp),
+      escapeHtml(w.sentenceEn),
+    ]),
+  })
+}
+
+// ── Kanji ──────────────────────────────────────────────────────────────────
+export interface AnkiExportKanji {
+  kanji: string
+  meanings: string[]
+  onyomi: string[]
+  kunyomi: string[]
+  examples: { word: string; reading: string; meaning: string }[]
+}
+
+export function buildKanjiApkg(entries: AnkiExportKanji[]): Promise<Blob> {
+  return buildAnkiApkg({
+    modelId: 1754000000003,
+    deckId: 1754000000004,
+    deckName: 'Nihongo Sensei Kanji',
+    modelName: 'Nihongo Sensei Kanji',
+    fieldNames: ['Kanji', 'Meanings', 'Onyomi', 'Kunyomi', 'Examples'],
+    qfmt: '<div style="font-size:64px">{{Kanji}}</div>',
+    afmt: '{{FrontSide}}<hr id="answer"><b>Meanings:</b> {{Meanings}}<br><b>On:</b> {{Onyomi}}<br><b>Kun:</b> {{Kunyomi}}<br><br>{{Examples}}',
+    css: '.card { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; font-size: 20px; text-align: center; color: #1a1a1a; background: #fafaf8; }',
+    rows: entries.map(k => [
+      escapeHtml(k.kanji),
+      escapeHtml(k.meanings.join(', ')),
+      escapeHtml(k.onyomi.join('、')),
+      escapeHtml(k.kunyomi.join('、')),
+      k.examples.map(ex => `${escapeHtml(ex.word)} (${escapeHtml(ex.reading)}) — ${escapeHtml(ex.meaning)}`).join('<br>'),
+    ]),
+  })
+}
+
+// ── Grammar ────────────────────────────────────────────────────────────────
+export interface AnkiExportGrammar {
+  pattern: string
+  english: string
+  explanation: string
+  hint: string
+  examples: { jp: string; en: string }[]
+}
+
+export function buildGrammarApkg(entries: AnkiExportGrammar[]): Promise<Blob> {
+  return buildAnkiApkg({
+    modelId: 1754000000005,
+    deckId: 1754000000006,
+    deckName: 'Nihongo Sensei Grammar',
+    modelName: 'Nihongo Sensei Grammar',
+    fieldNames: ['Pattern', 'English', 'Explanation', 'Hint', 'Examples'],
+    qfmt: '<div style="font-size:28px">{{Pattern}}</div><div style="font-size:16px;color:#888">{{English}}</div>',
+    afmt: '{{FrontSide}}<hr id="answer">{{Explanation}}<br><br><i>{{Hint}}</i><br><br>{{Examples}}',
+    css: '.card { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; font-size: 20px; text-align: center; color: #1a1a1a; background: #fafaf8; }',
+    rows: entries.map(g => [
+      escapeHtml(g.pattern),
+      escapeHtml(g.english),
+      escapeHtml(g.explanation),
+      escapeHtml(g.hint),
+      g.examples.map(ex => `${escapeHtml(ex.jp)}<br>${escapeHtml(ex.en)}`).join('<br><br>'),
+    ]),
+  })
 }
