@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { useStore } from '../store'
 import { VOCAB_DATA } from '../lib/vocab-data'
 import { IconSakura } from '../components/Icons'
+import { isSpeechRecognitionAvailable, startRecognition, RecognitionHandle } from '../lib/speech-recognition'
 
 const SCENARIOS = [
   { id: 'free', label: '自由会話', labelEn: 'Free Chat', desc: 'Open conversation on any topic' },
@@ -136,9 +137,12 @@ export default function Conversation() {
   const [showCorrections, setShowCorrections] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [historyConvId, setHistoryConvId] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const recognitionRef = useRef<RecognitionHandle | null>(null)
+  const speechAvailable = isSpeechRecognitionAvailable()
 
   const navigate = useNavigate()
   const { jlptLevel, apiKey, startConversation, addMessage, endConversation, addXP, addVocabCard, vocabCards, conversations } = useStore()
@@ -318,6 +322,30 @@ export default function Conversation() {
     setIsStreaming(false)
     setMessages(prev => prev.map(m => m.streaming ? { ...m, streaming: false } : m))
   }
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      return
+    }
+    const handle = startRecognition({
+      onResult: transcript => setInput(transcript),
+      onEnd: () => setIsRecording(false),
+      onError: error => {
+        setIsRecording(false)
+        if (error === 'not-allowed' || error === 'permission-denied') {
+          toast.error('Microphone access denied — check your browser permissions')
+        } else if (error !== 'aborted' && error !== 'no-speech') {
+          toast.error('Speech recognition failed — try again')
+        }
+      },
+    })
+    if (!handle) return
+    recognitionRef.current = handle
+    setIsRecording(true)
+  }
+
+  useEffect(() => () => { recognitionRef.current?.stop() }, [])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -729,6 +757,22 @@ export default function Conversation() {
                     }}
                   />
                 </div>
+
+                {speechAvailable && (
+                  <button
+                    type="button"
+                    onClick={toggleRecording}
+                    aria-label={isRecording ? 'Stop recording' : 'Speak your message'}
+                    title={isRecording ? 'Stop recording' : 'Speak in Japanese'}
+                    className={`h-12 w-12 rounded-xl border flex items-center justify-center transition-colors flex-shrink-0 ${
+                      isRecording
+                        ? 'bg-sakura text-white border-sakura animate-pulse'
+                        : 'bg-white text-ink-400 border-border hover:border-sakura/40 hover:text-sakura'
+                    }`}
+                  >
+                    🎤
+                  </button>
+                )}
 
                 {isStreaming ? (
                   <button

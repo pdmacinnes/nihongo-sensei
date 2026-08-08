@@ -651,6 +651,7 @@ export default function VocabReview() {
                               const correct = listenInput.trim() === listenWord.japanese ||
                                 listenInput.trim() === listenWord.reading
                               setListenResult(correct ? 'correct' : 'wrong')
+                              if (correct) useStore.getState().addXP(3)
                             }
                           }}
                           autoComplete="off" />
@@ -658,6 +659,7 @@ export default function VocabReview() {
                           const correct = listenInput.trim() === listenWord.japanese ||
                             listenInput.trim() === listenWord.reading
                           setListenResult(correct ? 'correct' : 'wrong')
+                          if (correct) useStore.getState().addXP(3)
                         }} disabled={!listenInput.trim()} className="btn-primary w-full disabled:opacity-40">
                           Check ↵
                         </button>
