@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs';
+import { fileURLToPath } from 'url';
 
-const vocabPath = 'C:/Users/Patrick/desktop/translationtool/src/lib/vocab-data.ts';
+const vocabPath = fileURLToPath(new URL('../src/lib/vocab-data.ts', import.meta.url));
 
 // Normalize N3 which has different field names/values
 function normalizeN3(json) {
@@ -58,7 +59,7 @@ const levels = [
 
 const allData = {};
 for (const { file, level } of levels) {
-  let json = JSON.parse(readFileSync(`C:/Users/Patrick/desktop/claude/${file}`, 'utf8'));
+  let json = JSON.parse(readFileSync(fileURLToPath(new URL(`./data/${file}`, import.meta.url)), 'utf8'));
   if (level === 'N3') json = normalizeN3(json);
   // Validate
   const issues = [];

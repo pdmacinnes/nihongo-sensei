@@ -5,8 +5,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter', 'Noto Sans JP', 'system-ui', 'sans-serif'],
-        japanese: ['Noto Sans JP', 'sans-serif'],
+        sans: ['Figtree', 'Noto Sans JP', 'system-ui', 'sans-serif'],
+        japanese: ['Noto Sans JP', 'Yu Gothic UI', 'Hiragino Sans', 'Meiryo', 'sans-serif'],
       },
       colors: {
         bg: {

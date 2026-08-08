@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 
-const filePath = 'C:/Users/Patrick/desktop/translationtool/src/lib/kanji-data.ts'
-const json = JSON.parse(readFileSync('C:/Users/Patrick/desktop/claude/kanji_n5_n4.json', 'utf8'))
+const filePath = fileURLToPath(new URL('../src/lib/kanji-data.ts', import.meta.url))
+const json = JSON.parse(readFileSync(fileURLToPath(new URL('./data/kanji_n5_n4.json', import.meta.url)), 'utf8'))
 
 // Get existing kanji chars to avoid duplicates
 const existing = readFileSync(filePath, 'utf8')

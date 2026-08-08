@@ -1,12 +1,12 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
 
 interface Props { children: ReactNode }
-interface State { error: Error | null }
+interface State { error: Error | null; resetKey: number }
 
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null }
+  state: State = { error: null, resetKey: 0 }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error }
   }
 
@@ -26,12 +26,14 @@ export default class ErrorBoundary extends Component<Props, State> {
               {this.state.error.message}
             </p>
             <button
+              type="button"
               className="btn-primary"
-              onClick={() => this.setState({ error: null })}
+              onClick={() => this.setState(s => ({ error: null, resetKey: s.resetKey + 1 }))}
             >
               Try again
             </button>
             <button
+              type="button"
               className="btn-secondary mt-2"
               onClick={() => { localStorage.clear(); window.location.reload() }}
             >
@@ -41,6 +43,6 @@ export default class ErrorBoundary extends Component<Props, State> {
         </div>
       )
     }
-    return this.props.children
+    return <div key={this.state.resetKey}>{this.props.children}</div>
   }
 }

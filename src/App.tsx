@@ -23,6 +23,7 @@ import Onboarding from './pages/Onboarding'
 const Reader = lazy(() => import('./pages/Reader'))
 import { useStore } from './store'
 import { initFirebase, uploadProgress, downloadProgress, isFirebaseConfigured } from './lib/firebase'
+import { scheduleStudyReminder, clearStudyReminder } from './lib/reminders'
 
 function DarkModeInit() {
   const darkMode = useStore(s => s.darkMode)
@@ -39,13 +40,22 @@ function CloudSyncManager() {
     if (!isFirebaseConfigured() || !syncCode) return
     initFirebase()
 
-    // On startup: download from cloud if it's newer than local
-    const state = useStore.getState()
+    // On startup: download from cloud if it's newer than local — but never
+    // silently wipe unsynced local progress that is ahead on XP.
     downloadProgress(syncCode).then(cloud => {
-      if (cloud && cloud.lastModified > state.lastSynced) {
-        const { syncCode: _sc, lastSynced: _ls, apiKey: _ak, ...rest } = cloud.state as any
-        useStore.setState({ ...rest, syncCode, lastSynced: cloud.lastModified })
+      if (!cloud) return
+      const local = useStore.getState()
+      if (cloud.lastModified <= local.lastSynced) return
+      const cloudXp = (cloud.state as { totalXp?: number }).totalXp ?? 0
+      if (local.totalXp > cloudXp) {
+        toast('Cloud has updates, but unsynced local progress is ahead. Upload or Download in Settings.', {
+          icon: '☁️',
+          duration: 5000,
+        })
+        return
       }
+      const { syncCode: _sc, lastSynced: _ls, apiKey: _ak, ...rest } = cloud.state as any
+      useStore.setState({ ...rest, syncCode, lastSynced: cloud.lastModified })
     })
 
     // On page hide (switching apps, closing tab): upload to cloud
@@ -92,6 +102,27 @@ function ReaderCaptureManager() {
   return null
 }
 
+/** Re-arm daily study reminder after refresh / app restart while the window is open. */
+function ReminderManager() {
+  const notificationsEnabled = useStore(s => s.notificationsEnabled)
+  const reminderTime = useStore(s => s.reminderTime)
+
+  useEffect(() => {
+    if (
+      notificationsEnabled &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'granted'
+    ) {
+      scheduleStudyReminder(reminderTime)
+    } else {
+      clearStudyReminder()
+    }
+    return () => clearStudyReminder()
+  }, [notificationsEnabled, reminderTime])
+
+  return null
+}
+
 function LevelUpTracker() {
   const xp = useStore(s => s.xp)
   const level = Math.floor(xp / 100)
@@ -128,6 +159,7 @@ export default function App() {
       />
       <DarkModeInit />
       <LevelUpTracker />
+      <ReminderManager />
       <CloudSyncManager />
       <ReaderCaptureManager />
       <HashRouter>

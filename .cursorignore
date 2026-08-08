@@ -1,0 +1,27 @@
+﻿# Dependencies & caches
+node_modules/
+**/*.tsbuildinfo
+
+# Build / release artifacts
+dist/
+release/
+release-public/
+
+# Secrets (also in .gitignore — keep out of Agent context)
+.env
+.env.*
+!.env.example
+
+# Large / local-only data
+scripts/data/
+docs/
+
+# Logs & OS noise
+*.log
+.DS_Store
+Thumbs.db
+
+# Editor / tool local
+.claude/
+.vscode/
+.idea/

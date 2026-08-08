@@ -174,6 +174,8 @@ interface AppState {
   setReminderTime: (time: string) => void
   showFurigana: boolean
   setShowFurigana: (show: boolean) => void
+  autoTts: boolean
+  setAutoTts: (on: boolean) => void
   darkMode: boolean
   setDarkMode: (dark: boolean) => void
 
@@ -212,7 +214,13 @@ interface AppState {
   loadMoreReaderOverflow: () => void
 }
 
-const todayStr = () => new Date().toISOString().split('T')[0]
+/** Local calendar date YYYY-MM-DD (not UTC — avoids streak/limit flips mid-evening). */
+const todayStr = (d = new Date()) => {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 
 export const useStore = create<AppState>()(
   persist(
@@ -263,7 +271,7 @@ export const useStore = create<AppState>()(
         if (state.lastStudyDate === today) return
         const yesterday = new Date()
         yesterday.setDate(yesterday.getDate() - 1)
-        const yesterdayStr = yesterday.toISOString().split('T')[0]
+        const yesterdayStr = todayStr(yesterday)
         if (state.lastStudyDate === yesterdayStr) {
           set({ streak: state.streak + 1, lastStudyDate: today })
         } else if (state.lastStudyDate !== '' && state.lastStudyDate !== today) {
@@ -373,6 +381,7 @@ export const useStore = create<AppState>()(
         const snap = get().lastVocabCardSnapshot
         if (!snap) return
         const today = todayStr()
+        const wasNew = snap.card.state === 'new'
         set(s => ({
           vocabCards: s.vocabCards.map(c => c.id === snap.card.id ? snap.card : c),
           xp: Math.max(0, s.xp - snap.xpSpent),
@@ -380,6 +389,10 @@ export const useStore = create<AppState>()(
           dailyXpHistory: s.dailyXpHistory.map(e =>
             e.date === today ? { ...e, xp: Math.max(0, e.xp - snap.xpSpent) } : e
           ),
+          // Rating a new card consumes a daily slot — restore it on undo
+          newCardsSeenToday: wasNew && s.newCardsSeenDate === today
+            ? Math.max(0, s.newCardsSeenToday - 1)
+            : s.newCardsSeenToday,
           lastVocabCardSnapshot: null,
         }))
       },
@@ -494,6 +507,8 @@ export const useStore = create<AppState>()(
       setReminderTime: (time) => set({ reminderTime: time }),
       showFurigana: true,
       setShowFurigana: (show) => set({ showFurigana: show }),
+      autoTts: true,
+      setAutoTts: (on) => set({ autoTts: on }),
       darkMode: false,
       setDarkMode: (dark) => {
         set({ darkMode: dark })
@@ -640,7 +655,7 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'nihongo-sensei-v2',
-      version: 4,
+      version: 5,
       migrate: (persisted: any) => ({
         wrongAnswerLog: [],
         dailyXpHistory: [],
@@ -657,13 +672,15 @@ export const useStore = create<AppState>()(
         ...persisted,
         // Rename newCardsSeen_date -> newCardsSeenDate
         newCardsSeenDate: persisted.newCardsSeenDate ?? persisted.newCardsSeen_date ?? '',
+        autoTts: persisted.autoTts ?? true,
       }),
       partialize: (state) => {
-        // apiKey always fresh from .env; lastVocabCardSnapshot is ephemeral.
+        // lastVocabCardSnapshot is ephemeral.
         // Reader live-session fields are runtime-only (see their declarations above) —
         // survive tab switches via the in-memory store, reset on app restart, never on disk.
+        // apiKey is persisted locally (Settings) but never uploaded to cloud sync.
         const {
-          apiKey, lastVocabCardSnapshot,
+          lastVocabCardSnapshot,
           readerLines, readerCaptureOn, readerPendingOverflow, readerNewWordsAdded,
           readerSessionId, readerSessionStart,
           ...rest

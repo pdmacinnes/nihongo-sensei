@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 
-const filePath = 'C:/Users/Patrick/desktop/translationtool/src/lib/reading-data.ts'
-const json = JSON.parse(readFileSync('C:/Users/Patrick/desktop/claude/reading_additions.json', 'utf8'))
+const filePath = fileURLToPath(new URL('../src/lib/reading-data.ts', import.meta.url))
+const json = JSON.parse(readFileSync(fileURLToPath(new URL('./data/reading_additions.json', import.meta.url)), 'utf8'))
 
 // Validate
 const issues = []

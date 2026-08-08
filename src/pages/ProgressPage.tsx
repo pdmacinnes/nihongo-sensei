@@ -1,15 +1,15 @@
 import { useMemo } from 'react'
-import { motion } from 'framer-motion'
 import { useStore } from '../store'
 import { getMaturityLabel, daysUntilDue } from '../lib/srs'
+import { IconStreak } from '../components/Icons'
 
-const SCENARIOS_MAP: Record<string, string> = {
-  free: '💬', restaurant: '🍜', shopping: '🛍️', directions: '🗺️',
-  introduction: '🤝', weather: '🌸', hobby: '🎨', business: '💼',
+const SCENARIO_LABELS: Record<string, string> = {
+  free: '自由会話', restaurant: 'レストラン', shopping: '買い物', directions: '道案内',
+  introduction: '自己紹介', weather: '天気', hobby: '趣味', business: 'ビジネス',
 }
 
 export default function ProgressPage() {
-  const { streak, xp, totalXp, username, jlptLevel, vocabCards, kanaProgress,
+  const { streak, totalXp, jlptLevel, vocabCards, kanaProgress,
           conversations, totalConversations, totalKanaCorrect, totalKanaIncorrect,
           getKanaMastery, dailyNewCardLimit, dailyXpHistory, wrongAnswerLog,
           clearWrongAnswerLog } = useStore()
@@ -23,7 +23,6 @@ export default function ProgressPage() {
   const maturityCounts: Record<string, number> = { New: 0, Learning: 0, Young: 0, Maturing: 0, Mature: 0, Mastered: 0 }
   vocabCards.forEach(c => { const l = getMaturityLabel(c); maturityCounts[l] = (maturityCounts[l] || 0) + 1 })
 
-  // Build 30-day XP chart data
   const today = new Date()
   const last30Days = Array.from({ length: 30 }, (_, i) => {
     const d = new Date(today)
@@ -34,25 +33,20 @@ export default function ProgressPage() {
   const chartData = last30Days.map(date => ({ date, xp: xpByDay[date] || 0 }))
   const maxXp = Math.max(...chartData.map(d => d.xp), 1)
 
-  // 28-day activity heatmap (4 complete weeks)
   const heatmapDays = useMemo(() => {
-    // Start from the most recent Monday, go back 27 days (4 weeks)
     const todayDate = new Date()
-    // Align to last Monday so grid is clean
-    const dayOfWeek = todayDate.getDay() // 0=Sun, 1=Mon, ...
+    const dayOfWeek = todayDate.getDay()
     const lastMonday = new Date(todayDate)
     lastMonday.setDate(todayDate.getDate() - ((dayOfWeek + 6) % 7))
-    const days = Array.from({ length: 28 }, (_, i) => {
+    return Array.from({ length: 28 }, (_, i) => {
       const d = new Date(lastMonday)
       d.setDate(lastMonday.getDate() - (27 - i))
       const dateStr = d.toISOString().split('T')[0]
       return { date: dateStr, xp: xpByDay[dateStr] || 0, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
     })
-    return days
   }, [xpByDay])
   const heatmapMax = Math.max(...heatmapDays.map(d => d.xp), 1)
 
-  // Weekly XP totals (last 8 weeks)
   const weeklyXp = useMemo(() => {
     const weeks: { label: string; xp: number }[] = []
     const todayDate = new Date()
@@ -63,8 +57,7 @@ export default function ProgressPage() {
       for (let d = 0; d < 7; d++) {
         const day = new Date(weekStart)
         day.setDate(weekStart.getDate() + d)
-        const dateStr = day.toISOString().split('T')[0]
-        total += xpByDay[dateStr] || 0
+        total += xpByDay[day.toISOString().split('T')[0]] || 0
       }
       weeks.push({ label: w === 0 ? 'This wk' : `${w}w ago`, xp: total })
     }
@@ -72,7 +65,6 @@ export default function ProgressPage() {
   }, [xpByDay])
   const maxWeeklyXp = Math.max(...weeklyXp.map(w => w.xp), 1)
 
-  // 30-day review forecast
   const forecastData = useMemo(() => {
     return Array.from({ length: 30 }, (_, i) => {
       const count = vocabCards.filter(c => c.state === 'review' && Math.round(daysUntilDue(c)) === i).length
@@ -82,15 +74,15 @@ export default function ProgressPage() {
   const maxForecast = Math.max(...forecastData.map(d => d.count), 1)
 
   const BADGES = [
-    { emoji: '🗣️', label: 'First Words', desc: 'Complete your first conversation', unlocked: totalConversations >= 1 },
-    { emoji: '💬', label: 'Chatterbox', desc: '5 conversations', unlocked: totalConversations >= 5 },
-    { emoji: '🔥', label: 'On Fire', desc: '3-day streak', unlocked: streak >= 3 },
-    { emoji: '⚡', label: 'Week Warrior', desc: '7-day streak', unlocked: streak >= 7 },
-    { emoji: '字', label: 'Kana Student', desc: '50% kana mastered', unlocked: kanaMastery >= 50 },
-    { emoji: '✨', label: 'Kana Master', desc: 'All kana mastered', unlocked: kanaMastery >= 100 },
-    { emoji: '📖', label: 'Word Collector', desc: '20 cards in deck', unlocked: vocabCards.length >= 20 },
-    { emoji: '⭐', label: 'Level 5', desc: 'Reach level 5', unlocked: xpLevel >= 5 },
-    { emoji: '🏆', label: 'Century', desc: 'Earn 100 XP', unlocked: totalXp >= 100 },
+    { label: 'First Words', desc: 'Complete your first conversation', unlocked: totalConversations >= 1 },
+    { label: 'Chatterbox', desc: '5 conversations', unlocked: totalConversations >= 5 },
+    { label: 'On Fire', desc: '3-day streak', unlocked: streak >= 3 },
+    { label: 'Week Warrior', desc: '7-day streak', unlocked: streak >= 7 },
+    { label: 'Kana Student', desc: '50% kana mastered', unlocked: kanaMastery >= 50 },
+    { label: 'Kana Master', desc: 'All kana mastered', unlocked: kanaMastery >= 100 },
+    { label: 'Word Collector', desc: '20 cards in deck', unlocked: vocabCards.length >= 20 },
+    { label: 'Level 5', desc: 'Reach level 5', unlocked: xpLevel >= 5 },
+    { label: 'Century', desc: 'Earn 100 XP', unlocked: totalXp >= 100 },
   ]
 
   return (
@@ -100,29 +92,28 @@ export default function ProgressPage() {
         <p className="text-ink-400 text-sm mt-0.5">Your Japanese learning journey</p>
       </div>
 
-      {/* Top stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Study Streak', value: streak, unit: 'days', icon: '🔥', color: 'text-sakura', border: 'border-sakura/20 bg-sakura/5' },
-          { label: 'Total XP', value: totalXp, unit: 'points', icon: '⭐', color: 'text-gold', border: 'border-gold/20 bg-gold/5' },
-          { label: 'Level', value: xpLevel, unit: 'current', icon: '🎌', color: 'text-blue-600', border: 'border-blue-200 bg-blue-50' },
-          { label: 'JLPT Target', value: jlptLevel, unit: 'level', icon: '📜', color: 'text-jade', border: 'border-jade/20 bg-jade/5' },
-        ].map((stat, i) => (
-          <motion.div key={stat.label}
-            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
-            className={`card border-2 ${stat.border} text-center shadow-card`}>
-            <span className="text-2xl">{stat.icon}</span>
-            <p className={`text-3xl font-bold ${stat.color} mt-1`}>{stat.value}</p>
-            <p className="text-ink-400 text-xs">{stat.label}</p>
-          </motion.div>
+          { label: 'Streak', value: streak, unit: 'days', color: 'text-sakura' },
+          { label: 'Total XP', value: totalXp, unit: 'points', color: 'text-gold' },
+          { label: 'Level', value: xpLevel, unit: 'current', color: 'text-ink-200' },
+          { label: 'JLPT', value: jlptLevel, unit: 'target', color: 'text-jade' },
+        ].map(stat => (
+          <div key={stat.label} className="border-b border-border pb-3">
+            <div className="flex items-center gap-1.5 text-ink-400 text-xs mb-1">
+              {stat.label === 'Streak' && <IconStreak size={12} className="text-sakura" />}
+              {stat.label}
+            </div>
+            <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}</p>
+            <p className="text-ink-400 text-xs">{stat.unit}</p>
+          </div>
         ))}
       </div>
 
-      {/* 30-day XP Chart */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="card mb-4">
-        <h2 className="text-ink-200 font-semibold mb-4">Daily XP — Last 30 Days</h2>
+      <section className="mb-6">
+        <h2 className="text-ink-200 font-semibold mb-3">Daily XP — Last 30 Days</h2>
         <div className="flex items-end gap-0.5 h-24">
-          {chartData.map((d, i) => {
+          {chartData.map(d => {
             const isToday = d.date === today.toISOString().split('T')[0]
             const heightPct = d.xp > 0 ? Math.max((d.xp / maxXp) * 100, 8) : 2
             return (
@@ -133,12 +124,6 @@ export default function ProgressPage() {
                   }`}
                   style={{ height: `${heightPct}%` }}
                 />
-                {/* Tooltip */}
-                {d.xp > 0 && (
-                  <div className="absolute bottom-full mb-1 hidden group-hover:block z-10 bg-ink-100 text-white text-xs rounded px-1.5 py-0.5 whitespace-nowrap pointer-events-none">
-                    {d.xp} XP
-                  </div>
-                )}
               </div>
             )
           })}
@@ -147,10 +132,9 @@ export default function ProgressPage() {
           <span>30 days ago</span>
           <span>Today</span>
         </div>
-      </motion.div>
+      </section>
 
-      {/* Study activity heatmap */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }} className="card mb-4">
+      <section className="mb-6">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-ink-200 font-semibold">Study Activity — Last 4 Weeks</h2>
           <div className="flex items-center gap-1.5 text-xs text-ink-400">
@@ -166,42 +150,36 @@ export default function ProgressPage() {
             <div key={d} className="flex-1 text-center">{d}</div>
           ))}
         </div>
-        <div className="grid gap-0.5" style={{ gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: 'repeat(4, 1fr)' }}>
-          {heatmapDays.map((day) => {
+        <div className="grid gap-0.5" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
+          {heatmapDays.map(day => {
             const intensity = day.xp > 0 ? Math.max(0.15, day.xp / heatmapMax) : 0
             const isToday = day.date === today.toISOString().split('T')[0]
             return (
               <div
                 key={day.date}
                 title={`${day.label}: ${day.xp} XP`}
-                className={`h-7 rounded-sm transition-all cursor-default ${isToday ? 'ring-1 ring-sakura ring-offset-1' : ''}`}
+                className={`h-7 rounded-sm ${isToday ? 'ring-1 ring-sakura ring-offset-1' : ''} ${day.xp > 0 ? '' : 'heatmap-empty'}`}
                 style={{
-                  background: day.xp > 0
-                    ? `rgba(201,75,75,${intensity})`
-                    : 'rgba(0,0,0,0.05)',
+                  background: day.xp > 0 ? `rgba(201,75,75,${intensity})` : undefined,
                 }}
               />
             )
           })}
         </div>
-      </motion.div>
+      </section>
 
-      {/* Weekly XP chart */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.17 }} className="card mb-4">
+      <section className="mb-6">
         <h2 className="text-ink-200 font-semibold mb-3">Weekly XP — Last 8 Weeks</h2>
         <div className="flex items-end gap-2 h-20">
           {weeklyXp.map((week, i) => {
             const heightPct = week.xp > 0 ? Math.max((week.xp / maxWeeklyXp) * 100, 6) : 2
             const isCurrent = i === weeklyXp.length - 1
             return (
-              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1 group relative">
-                {week.xp > 0 && (
-                  <span className="text-[10px] text-ink-400">{week.xp}</span>
-                )}
+              <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1">
+                {week.xp > 0 && <span className="text-[10px] text-ink-400">{week.xp}</span>}
                 <div
-                  className={`w-full rounded-t transition-all duration-500 ${isCurrent ? 'bg-sakura' : 'bg-jade/60 group-hover:bg-jade/80'}`}
+                  className={`w-full rounded-t ${isCurrent ? 'bg-sakura' : 'bg-jade/60'}`}
                   style={{ height: `${heightPct}%` }}
-                  title={`${week.label}: ${week.xp} XP`}
                 />
                 <span className={`text-[10px] font-medium ${isCurrent ? 'text-sakura' : 'text-ink-400'}`}>
                   {week.label}
@@ -210,27 +188,22 @@ export default function ProgressPage() {
             )
           })}
         </div>
-      </motion.div>
+      </section>
 
-      {/* 30-day Review Forecast */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.17 }} className="card mb-4">
-        <div className="flex items-center justify-between mb-4">
+      <section className="mb-6">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-ink-200 font-semibold">Review Forecast — Next 30 Days</h2>
-          <span className="text-ink-400 text-xs">{vocabCards.filter(c => c.state === 'review').length} review cards total</span>
+          <span className="text-ink-400 text-xs">{vocabCards.filter(c => c.state === 'review').length} review cards</span>
         </div>
         <div className="flex items-end gap-0.5 h-20">
           {forecastData.map((d, i) => {
             const heightPct = d.count > 0 ? Math.max((d.count / maxForecast) * 100, 8) : 2
             return (
-              <div key={i} className="flex-1 flex flex-col items-center justify-end group relative" title={`Day +${i}: ${d.count} cards`}>
-                <div className={`w-full rounded-t transition-all duration-500 ${
-                  i === 0 ? 'bg-sakura' : i <= 3 ? 'bg-gold/80' : 'bg-jade/50 group-hover:bg-jade/80'
-                }`} style={{ height: `${heightPct}%` }} />
-                {d.count > 0 && (
-                  <div className="absolute bottom-full mb-1 hidden group-hover:block z-10 bg-ink-100 text-white text-xs rounded px-1.5 py-0.5 whitespace-nowrap pointer-events-none">
-                    +{i}d: {d.count} cards
-                  </div>
-                )}
+              <div key={i} className="flex-1 flex flex-col items-center justify-end" title={`Day +${i}: ${d.count} cards`}>
+                <div
+                  className={`w-full rounded-t ${i === 0 ? 'bg-sakura' : i <= 3 ? 'bg-gold/80' : 'bg-jade/50'}`}
+                  style={{ height: `${heightPct}%` }}
+                />
               </div>
             )
           })}
@@ -239,43 +212,43 @@ export default function ProgressPage() {
           <span className="text-sakura font-medium">Today</span>
           <span>+30 days</span>
         </div>
-      </motion.div>
+      </section>
 
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        {/* Kana */}
-        <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }} className="card">
-          <h2 className="text-ink-200 font-semibold mb-4">Kana Mastery</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+        <section>
+          <h2 className="text-ink-200 font-semibold mb-3">Kana Mastery</h2>
           <div className="flex items-end gap-4 mb-4">
             <div>
-              <p className="text-4xl font-bold text-blue-600">{kanaMastery}%</p>
+              <p className="text-4xl font-bold text-ink-100">{kanaMastery}%</p>
               <p className="text-ink-400 text-sm">{masteredKana} / 92</p>
             </div>
             <div className="flex-1">
               <div className="xp-bar h-3">
-                <div className="h-full rounded-full bg-gradient-to-r from-blue-400 to-jade transition-all duration-700"
-                  style={{ width: `${kanaMastery}%` }} />
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sakura to-jade transition-all duration-700"
+                  style={{ width: `${kanaMastery}%` }}
+                />
               </div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 text-center text-sm">
-            <div className="sentence-card">
-              <p className="text-jade font-bold">{totalKanaCorrect}</p>
+          <div className="flex gap-6 text-sm">
+            <div>
+              <p className="text-jade font-bold text-lg">{totalKanaCorrect}</p>
               <p className="text-ink-400 text-xs">Correct</p>
             </div>
-            <div className="sentence-card">
-              <p className="text-sakura font-bold">{totalKanaIncorrect}</p>
+            <div>
+              <p className="text-sakura font-bold text-lg">{totalKanaIncorrect}</p>
               <p className="text-ink-400 text-xs">Incorrect</p>
             </div>
-            <div className="sentence-card">
-              <p className="text-gold font-bold">{kanaAccuracy}%</p>
+            <div>
+              <p className="text-gold font-bold text-lg">{kanaAccuracy}%</p>
               <p className="text-ink-400 text-xs">Accuracy</p>
             </div>
           </div>
-        </motion.div>
+        </section>
 
-        {/* Vocab SRS */}
-        <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.25 }} className="card">
-          <h2 className="text-ink-200 font-semibold mb-4">Vocabulary SRS</h2>
+        <section>
+          <h2 className="text-ink-200 font-semibold mb-3">Vocabulary SRS</h2>
           <div className="flex items-baseline gap-2 mb-1">
             <p className="text-4xl font-bold text-jade">{vocabCards.length}</p>
             <p className="text-ink-400 text-sm">cards in deck</p>
@@ -292,35 +265,31 @@ export default function ProgressPage() {
                 <div key={label} className="flex items-center gap-2">
                   <span className="text-ink-400 text-xs w-16">{label}</span>
                   <div className="flex-1 h-1.5 bg-bg-secondary rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${colors[label]} transition-all duration-500`}
-                      style={{ width: `${pct}%` }} />
+                    <div className={`h-full rounded-full ${colors[label]}`} style={{ width: `${pct}%` }} />
                   </div>
                   <span className="text-ink-300 text-xs w-4 text-right">{count}</span>
                 </div>
               ) : null
             })}
           </div>
-        </motion.div>
+        </section>
       </div>
 
-      {/* Wrong answer log */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.28 }} className="card mb-4">
-        <div className="flex items-center justify-between mb-4">
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-ink-200 font-semibold">
             Wrong Answer Log <span className="text-sakura ml-2">{wrongAnswerLog.length}</span>
           </h2>
           {wrongAnswerLog.length > 0 && (
-            <button onClick={clearWrongAnswerLog} className="btn-ghost text-xs text-ink-400">
-              Clear
-            </button>
+            <button onClick={clearWrongAnswerLog} className="btn-ghost text-xs text-ink-400">Clear</button>
           )}
         </div>
         {wrongAnswerLog.length === 0
-          ? <p className="text-ink-400 text-center py-5 text-sm">No mistakes logged yet — keep it up!</p>
+          ? <p className="text-ink-400 text-sm">No mistakes logged yet — keep it up!</p>
           : (
-            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+            <div className="space-y-1 max-h-52 overflow-y-auto divide-y divide-border">
               {wrongAnswerLog.slice(0, 30).map(entry => (
-                <div key={entry.id} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-bg-primary border border-border text-sm">
+                <div key={entry.id} className="flex items-center justify-between py-2 text-sm">
                   <div className="flex items-center gap-2">
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                       entry.type === 'vocab' ? 'bg-sakura/10 text-sakura' : 'bg-gold/10 text-gold'
@@ -333,60 +302,56 @@ export default function ProgressPage() {
                   <span className="text-ink-400 text-xs">{entry.english}</span>
                 </div>
               ))}
-              {wrongAnswerLog.length > 30 && (
-                <p className="text-ink-400 text-xs text-center pt-1">+{wrongAnswerLog.length - 30} more</p>
-              )}
             </div>
           )}
-      </motion.div>
+      </section>
 
-      {/* Conversation history */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="card mb-4">
-        <h2 className="text-ink-200 font-semibold mb-4">
+      <section className="mb-8">
+        <h2 className="text-ink-200 font-semibold mb-3">
           Conversations <span className="text-jade font-bold ml-2">{totalConversations}</span>
         </h2>
         {conversations.length === 0
-          ? <p className="text-ink-400 text-center py-6 text-sm">No conversations yet — start chatting with Sakura!</p>
+          ? <p className="text-ink-400 text-sm">No conversations yet — start chatting with Sakura!</p>
           : (
-            <div className="space-y-2 max-h-40 overflow-y-auto">
+            <div className="space-y-0 max-h-40 overflow-y-auto divide-y divide-border">
               {conversations.map(conv => (
-                <div key={conv.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl">{SCENARIOS_MAP[conv.scenario] || '💬'}</span>
-                    <div>
-                      <p className="text-ink-200 text-sm font-medium capitalize">{conv.scenario}</p>
-                      <p className="text-ink-400 text-xs">{conv.messages.length} messages · {conv.level}</p>
-                    </div>
+                <div key={conv.id} className="flex items-center justify-between py-2.5">
+                  <div>
+                    <p className="text-ink-200 text-sm font-medium japanese-text">
+                      {SCENARIO_LABELS[conv.scenario] || conv.scenario}
+                    </p>
+                    <p className="text-ink-400 text-xs">{conv.messages.length} messages · {conv.level}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-ink-400 text-xs">{new Date(conv.startedAt).toLocaleDateString()}</p>
-                    <p className="text-jade text-xs">Complete ✓</p>
+                    <p className="text-jade text-xs">Complete</p>
                   </div>
                 </div>
               ))}
             </div>
           )}
-      </motion.div>
+      </section>
 
-      {/* Badges */}
-      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="card">
-        <h2 className="text-ink-200 font-semibold mb-4">
+      <section>
+        <h2 className="text-ink-200 font-semibold mb-3">
           Achievements <span className="text-gold ml-2">{BADGES.filter(b => b.unlocked).length}/{BADGES.length}</span>
         </h2>
         <div className="grid grid-cols-3 gap-3">
           {BADGES.map(badge => (
-            <div key={badge.label} className={`p-3 rounded-xl border-2 text-center transition-all ${
-              badge.unlocked ? 'border-gold/30 bg-gold/8 shadow-sm' : 'border-border bg-bg-primary opacity-50'
-            }`}>
-              <span className="text-2xl">{badge.emoji}</span>
-              <p className={`text-sm font-semibold mt-1 ${badge.unlocked ? 'text-ink-100' : 'text-ink-400'}`}>
+            <div
+              key={badge.label}
+              className={`p-3 rounded-xl border text-center ${
+                badge.unlocked ? 'border-gold/30 bg-gold/8' : 'border-border opacity-50'
+              }`}
+            >
+              <p className={`text-sm font-semibold ${badge.unlocked ? 'text-ink-100' : 'text-ink-400'}`}>
                 {badge.label}
               </p>
               <p className="text-ink-400 text-xs mt-0.5">{badge.desc}</p>
             </div>
           ))}
         </div>
-      </motion.div>
+      </section>
     </div>
   )
 }

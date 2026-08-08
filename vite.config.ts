@@ -56,15 +56,27 @@ export default defineConfig({
         theme_color: '#c94b4b',
         background_color: '#faf9f5',
         display: 'standalone',
-        start_url: '/',
+        start_url: './',
+        scope: './',
         icons: [
-          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
       workbox: {
+        // App shell only — Reader dictionaries are large (~25MB) and cached on first use
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
+          {
+            // kuromoji + JMdict + frequency: CacheFirst so Reader works offline after first visit
+            urlPattern: /\/(dict|kuromoji-dict)\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'reader-dictionaries',
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',

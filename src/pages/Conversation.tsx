@@ -1,19 +1,21 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Anthropic from '@anthropic-ai/sdk'
 import toast from 'react-hot-toast'
 import { useStore } from '../store'
 import { VOCAB_DATA } from '../lib/vocab-data'
+import { IconSakura } from '../components/Icons'
 
 const SCENARIOS = [
-  { id: 'free', label: '自由会話', labelEn: 'Free Chat', desc: 'Open conversation on any topic', icon: '💬' },
-  { id: 'restaurant', label: 'レストラン', labelEn: 'Restaurant', desc: 'Ordering food and drinks', icon: '🍜' },
-  { id: 'shopping', label: '買い物', labelEn: 'Shopping', desc: 'Buying things at a store', icon: '🛍️' },
-  { id: 'directions', label: '道案内', labelEn: 'Directions', desc: 'Asking for and giving directions', icon: '🗺️' },
-  { id: 'introduction', label: '自己紹介', labelEn: 'Introduction', desc: 'Introducing yourself', icon: '🤝' },
-  { id: 'weather', label: '天気', labelEn: 'Weather', desc: 'Talking about the weather', icon: '🌸' },
-  { id: 'hobby', label: '趣味', labelEn: 'Hobbies', desc: 'Discussing hobbies and interests', icon: '🎨' },
-  { id: 'business', label: 'ビジネス', labelEn: 'Business', desc: 'Professional office situations', icon: '💼' },
+  { id: 'free', label: '自由会話', labelEn: 'Free Chat', desc: 'Open conversation on any topic' },
+  { id: 'restaurant', label: 'レストラン', labelEn: 'Restaurant', desc: 'Ordering food and drinks' },
+  { id: 'shopping', label: '買い物', labelEn: 'Shopping', desc: 'Buying things at a store' },
+  { id: 'directions', label: '道案内', labelEn: 'Directions', desc: 'Asking for and giving directions' },
+  { id: 'introduction', label: '自己紹介', labelEn: 'Introduction', desc: 'Introducing yourself' },
+  { id: 'weather', label: '天気', labelEn: 'Weather', desc: 'Talking about the weather' },
+  { id: 'hobby', label: '趣味', labelEn: 'Hobbies', desc: 'Discussing hobbies and interests' },
+  { id: 'business', label: 'ビジネス', labelEn: 'Business', desc: 'Professional office situations' },
 ]
 
 const LEVELS = [
@@ -138,37 +140,51 @@ export default function Conversation() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  const { jlptLevel, apiKey, currentConversation, startConversation, addMessage, endConversation, addXP, addVocabCard, vocabCards, conversations } = useStore()
+  const navigate = useNavigate()
+  const { jlptLevel, apiKey, startConversation, addMessage, endConversation, addXP, addVocabCard, vocabCards, conversations } = useStore()
   const rehydratedRef = useRef(false)
+  const hasApiKey = Boolean(apiKey?.trim())
 
   useEffect(() => {
     setSelectedLevel(jlptLevel)
   }, [jlptLevel])
 
-  // Resume an in-progress chat instead of dropping back to setup — the store's
-  // currentConversation survives navigating to other tabs and back, but the local
-  // UI state (messages, phase) does not, so rebuild it from the store once on mount.
+  // Resume an in-progress chat after mount / persist rehydration. Wait for
+  // hydration so a null currentConversation on first paint doesn't lock us out
+  // of restoring a conversation that arrives a tick later from localStorage.
   useEffect(() => {
-    if (rehydratedRef.current) return
-    rehydratedRef.current = true
-    if (!currentConversation) return
-    setSelectedScenario(currentConversation.scenario)
-    setSelectedLevel(currentConversation.level)
-    setMessages(currentConversation.messages.map((m, i) => {
-      if (m.role === 'assistant') {
-        const parsed = parseStoredMessage(m.content)
-        return { id: m.id, role: 'assistant', japanese: parsed.japanese, translation: parsed.translation, corrections: parsed.corrections, timestamp: m.timestamp, isOpening: i === 0 }
-      }
-      return { id: m.id, role: 'user', japanese: m.content, timestamp: m.timestamp }
-    }))
-    setPhase('chat')
-  }, [currentConversation])
+    const restore = () => {
+      if (rehydratedRef.current) return
+      rehydratedRef.current = true
+      const conv = useStore.getState().currentConversation
+      if (!conv) return
+      setSelectedScenario(conv.scenario)
+      setSelectedLevel(conv.level)
+      setMessages(conv.messages.map((m, i) => {
+        if (m.role === 'assistant') {
+          const parsed = parseStoredMessage(m.content)
+          return { id: m.id, role: 'assistant', japanese: parsed.japanese, translation: parsed.translation, corrections: parsed.corrections, timestamp: m.timestamp, isOpening: i === 0 }
+        }
+        return { id: m.id, role: 'user', japanese: m.content, timestamp: m.timestamp }
+      }))
+      setPhase('chat')
+    }
+    if (useStore.persist.hasHydrated()) {
+      restore()
+      return
+    }
+    return useStore.persist.onFinishHydration(restore)
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   const startChat = useCallback(() => {
+    if (!useStore.getState().apiKey?.trim()) {
+      toast.error('Add your Anthropic API key in Settings first')
+      return
+    }
     startConversation(selectedScenario, selectedLevel)
     setMessages([])
     setPhase('chat')
@@ -312,14 +328,14 @@ export default function Conversation() {
 
   const endChat = () => {
     endConversation()
-    toast.success('+25 XP — conversation complete! 💬', { duration: 3000 })
+    toast.success('+25 XP — conversation complete!', { duration: 3000 })
     setPhase('setup')
     setMessages([])
     setShowCorrections(null)
   }
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="chat-shell flex flex-col">
       <AnimatePresence mode="wait">
         {phase === 'setup' && (
           <motion.div
@@ -329,43 +345,48 @@ export default function Conversation() {
             exit={{ opacity: 0 }}
             className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full"
           >
-            {/* Header */}
             <div className="mb-8 text-center">
-              <motion.div
-                animate={{ y: [0, -6, 0] }}
-                transition={{ repeat: Infinity, duration: 3, ease: 'easeInOut' }}
-                className="text-6xl mb-4"
-              >
-                🌸
-              </motion.div>
-              <h1 className="text-3xl font-bold text-ink-100 mb-1">Chat with Sakura</h1>
-              <p className="text-ink-400">桜先生 · Your AI Japanese tutor</p>
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-sakura/10 border border-sakura/20 text-sakura mb-4">
+                <IconSakura size={32} />
+              </div>
+              <h1 className="text-3xl font-bold text-ink-100 mb-1">
+                <span className="japanese-text text-sakura">会話</span> with Sakura
+              </h1>
+              <p className="text-ink-400 japanese-text">桜先生 · Your AI Japanese tutor</p>
             </div>
 
-            {/* Scenario picker */}
+            {!hasApiKey && (
+              <div className="mb-6 p-4 rounded-xl border border-sakura/30 bg-sakura/8 text-center">
+                <p className="text-sakura text-sm font-medium mb-2">
+                  An Anthropic API key is required to chat with Sakura.
+                </p>
+                <button type="button" onClick={() => navigate('/settings')} className="btn-primary text-sm">
+                  Open Settings →
+                </button>
+              </div>
+            )}
+
+            {/* Scenario picker — JP-first, quiet English */}
             <div className="mb-6">
-              <h2 className="text-ink-200 font-semibold mb-3">Choose a scenario</h2>
-              <div className="grid grid-cols-2 gap-3">
+              <h2 className="text-ink-200 font-semibold mb-1">Choose a setting</h2>
+              <p className="text-ink-400 text-xs mb-3">Where should this conversation take place?</p>
+              <div className="grid grid-cols-2 gap-2">
                 {SCENARIOS.map(s => (
                   <button
                     key={s.id}
                     onClick={() => setSelectedScenario(s.id)}
-                    className={`p-4 rounded-xl border-2 text-left transition-all duration-200 shadow-card ${
+                    className={`px-4 py-3.5 rounded-xl border-2 text-left transition-all duration-200 ${
                       selectedScenario === s.id
-                        ? 'border-sakura bg-sakura/8 shadow-sakura'
-                        : 'border-border bg-white hover:border-border-light hover:shadow-card-md'
+                        ? 'border-sakura bg-sakura/8 shadow-sm'
+                        : 'border-border bg-white hover:border-border-light'
                     }`}
                   >
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">{s.icon}</span>
-                      <div>
-                        <p className={`font-medium text-sm ${selectedScenario === s.id ? 'text-sakura' : 'text-ink-100'}`}>
-                          <span className="japanese-text">{s.label}</span> — {s.labelEn}
-                        </p>
-                        <p className="text-ink-400 text-xs mt-0.5">{s.desc}</p>
-                      </div>
-                      {selectedScenario === s.id && <span className="ml-auto text-sakura">✓</span>}
-                    </div>
+                    <p className={`japanese-text text-lg font-medium leading-tight ${
+                      selectedScenario === s.id ? 'text-sakura' : 'text-ink-100'
+                    }`}>
+                      {s.label}
+                    </p>
+                    <p className="text-ink-400 text-xs mt-0.5">{s.labelEn}</p>
                   </button>
                 ))}
               </div>
@@ -373,8 +394,8 @@ export default function Conversation() {
 
             {/* Level picker */}
             <div className="mb-8">
-              <h2 className="text-ink-200 font-semibold mb-3">Difficulty level</h2>
-              <div className="grid grid-cols-5 gap-3">
+              <h2 className="text-ink-200 font-semibold mb-3">Difficulty</h2>
+              <div className="grid grid-cols-5 gap-2">
                 {LEVELS.map(l => (
                   <button
                     key={l.id}
@@ -385,19 +406,20 @@ export default function Conversation() {
                         : 'border-border bg-bg-card hover:border-border-light'
                     }`}
                   >
-                    <p className={`text-xl font-bold mb-1 ${selectedLevel === l.id ? 'text-sakura' : 'text-ink-200'}`}>
+                    <p className={`text-xl font-bold ${selectedLevel === l.id ? 'text-sakura' : 'text-ink-200'}`}>
                       {l.id}
                     </p>
-                    <p className="text-ink-300 text-xs font-medium">{l.label.split(' ')[1]}</p>
-                    <p className="text-ink-400 text-xs mt-1 leading-tight">{l.desc}</p>
+                    <p className="text-ink-400 text-[10px] mt-0.5 leading-tight hidden sm:block">{l.label.split(' ').slice(1).join(' ')}</p>
                   </button>
                 ))}
               </div>
             </div>
 
             <button
+              type="button"
               onClick={startChat}
-              className="w-full btn-primary py-4 text-lg"
+              disabled={!hasApiKey}
+              className="w-full btn-primary py-4 text-lg disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <span className="japanese-text">始めましょう！</span> Start Conversation
             </button>
@@ -443,18 +465,17 @@ export default function Conversation() {
                     className="w-full card text-left hover:border-sakura/30 hover:shadow-card-md transition-all group"
                   >
                     <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{scenario?.icon ?? '💬'}</span>
-                        <div>
-                          <p className="font-medium text-ink-100 group-hover:text-sakura transition-colors">
-                            {scenario?.labelEn ?? conv.scenario}
-                          </p>
-                          <p className="text-ink-400 text-xs mt-0.5">
-                            {new Date(conv.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            {' · '}
-                            {new Date(conv.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        </div>
+                      <div>
+                        <p className="font-medium text-ink-100 group-hover:text-sakura transition-colors japanese-text text-base">
+                          {scenario?.label ?? conv.scenario}
+                        </p>
+                        <p className="text-ink-400 text-xs mt-0.5">
+                          {scenario?.labelEn}
+                          {' · '}
+                          {new Date(conv.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {' · '}
+                          {new Date(conv.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
                       </div>
                       <div className="text-right flex-shrink-0 ml-4">
                         <span className={`text-xs ${{ N5: 'tag-jade', N4: 'tag-blue', N3: 'tag-gold', N2: 'tag-sakura', N1: 'tag-purple' }[conv.level as 'N5'] ?? 'tag-jade'}`}>
@@ -485,21 +506,20 @@ export default function Conversation() {
               className="flex-1 flex flex-col overflow-hidden"
             >
               <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-white shadow-sm flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setPhase('history')} className="btn-secondary text-sm">
-                    Back
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{scenario?.icon ?? '💬'}</span>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setPhase('history')} className="btn-secondary text-sm">
+                      Back
+                    </button>
                     <div>
-                      <p className="text-ink-100 font-medium text-sm">{scenario?.labelEn ?? conv.scenario}</p>
+                      <p className="text-ink-100 font-medium text-sm japanese-text">{scenario?.label ?? conv.scenario}</p>
                       <p className="text-ink-400 text-xs">
+                        {scenario?.labelEn}
+                        {' · '}
                         {new Date(conv.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         {' · '}{conv.level}
                       </p>
                     </div>
                   </div>
-                </div>
                 <span className={`text-xs ${{ N5: 'tag-jade', N4: 'tag-blue', N3: 'tag-gold', N2: 'tag-sakura', N1: 'tag-purple' }[conv.level as 'N5'] ?? 'tag-jade'}`}>
                   {conv.level}
                 </span>
@@ -514,13 +534,13 @@ export default function Conversation() {
                       className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} gap-3`}
                     >
                       {msg.role === 'assistant' && (
-                        <div className="w-8 h-8 rounded-full bg-sakura/20 border border-sakura/30 flex items-center justify-center text-sm flex-shrink-0 mt-1">
-                          🌸
+                        <div className="w-8 h-8 rounded-full bg-sakura/15 border border-sakura/25 flex items-center justify-center text-sakura flex-shrink-0 mt-1">
+                          <IconSakura size={16} />
                         </div>
                       )}
                       <div className="max-w-[75%] space-y-1">
                         <div className={msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>
-                          <p className="japanese-text text-base leading-relaxed">
+                          <p className="study-jp text-ink-100">
                             {parsed ? parsed.japanese : msg.content}
                           </p>
                           {parsed?.translation && (
@@ -566,20 +586,24 @@ export default function Conversation() {
             {/* Chat header */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-border bg-white shadow-sm flex-shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-sakura/20 border border-sakura/30 flex items-center justify-center text-lg">
-                  🌸
+                <div className="w-9 h-9 rounded-full bg-sakura/15 border border-sakura/25 flex items-center justify-center text-sakura">
+                  <IconSakura size={18} />
                 </div>
                 <div>
-                  <p className="text-ink-100 font-medium text-sm">Sakura 桜先生</p>
+                  <p className="text-ink-100 font-medium text-sm">
+                    Sakura <span className="japanese-text text-ink-300">桜先生</span>
+                  </p>
                   <p className="text-ink-400 text-xs">
-                    {SCENARIOS.find(s => s.id === selectedScenario)?.labelEn} · {selectedLevel}
-                    {isStreaming && <span className="text-jade animate-pulse ml-1">· typing...</span>}
+                    {SCENARIOS.find(s => s.id === selectedScenario)?.label}
+                    {' · '}{selectedLevel}
+                    {isStreaming && <span className="text-jade ml-1">· typing…</span>}
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-ink-400 text-xs">{messages.filter(m => m.role === 'user').length} exchanges</span>
                 <button
+                  type="button"
                   onClick={endChat}
                   className="btn-ghost text-sm text-sakura hover:text-sakura-bright"
                 >
@@ -591,27 +615,24 @@ export default function Conversation() {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-bg-primary">
               {messages.map((msg) => (
-                <motion.div
+                <div
                   key={msg.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
                   className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} gap-3`}
                 >
                   {msg.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-full bg-sakura/20 border border-sakura/30 flex items-center justify-center text-sm flex-shrink-0 mt-1">
-                      🌸
+                    <div className="w-8 h-8 rounded-full bg-sakura/15 border border-sakura/25 flex items-center justify-center text-sakura flex-shrink-0 mt-1">
+                      <IconSakura size={16} />
                     </div>
                   )}
 
                   <div className="max-w-[75%] space-y-1">
                     <div className={msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}>
-                      <p className={`japanese-text text-base leading-relaxed ${
+                      <p className={`study-jp text-ink-100 ${
                         msg.streaming ? 'streaming-cursor' : ''
                       }`}>
                         {msg.japanese || (msg.streaming ? '' : '...')}
                       </p>
 
-                      {/* Translation toggle */}
                       {msg.role === 'assistant' && msg.translation && !msg.streaming && (
                         <details className="mt-2">
                           <summary className="text-ink-400 text-xs cursor-pointer hover:text-ink-300 select-none list-none flex items-center gap-1">
@@ -622,7 +643,6 @@ export default function Conversation() {
                       )}
                     </div>
 
-                    {/* Corrections button */}
                     {msg.role === 'assistant' && msg.corrections && !msg.streaming && (
                       <button
                         onClick={() => setShowCorrections(
@@ -635,12 +655,11 @@ export default function Conversation() {
                         }`}
                       >
                         {msg.corrections.startsWith('None')
-                          ? '✓ No mistakes!'
-                          : '📝 View corrections'}
+                          ? 'No mistakes'
+                          : 'View corrections'}
                       </button>
                     )}
 
-                    {/* Corrections panel */}
                     <AnimatePresence>
                       {showCorrections === msg.id && msg.corrections && (
                         <motion.div
@@ -650,14 +669,13 @@ export default function Conversation() {
                           className="overflow-hidden"
                         >
                           <div className="bg-gold/5 border border-gold/20 rounded-xl p-3 text-sm">
-                            <p className="text-gold font-medium text-xs mb-2">📝 Sakura's Notes</p>
+                            <p className="text-gold font-medium text-xs mb-2">Sakura&apos;s notes</p>
                             <p className="text-ink-200 whitespace-pre-wrap leading-relaxed">{msg.corrections}</p>
                           </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
 
-                    {/* Sentence mining: vocab words found in AI message */}
                     {msg.role === 'assistant' && !msg.streaming && msg.japanese && (
                       <VocabMiningChips
                         japanese={msg.japanese}
@@ -670,13 +688,13 @@ export default function Conversation() {
                       {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                   </div>
-                </motion.div>
+                </div>
               ))}
 
               {error && (
                 <div className="flex justify-center">
                   <div className="bg-sakura/10 border border-sakura/30 rounded-xl px-4 py-3 text-sakura text-sm max-w-md">
-                    ⚠️ {error}
+                    {error}
                   </div>
                 </div>
               )}
@@ -684,14 +702,13 @@ export default function Conversation() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Tips bar */}
             <div className="px-5 py-1.5 border-t border-border bg-bg-secondary flex-shrink-0">
               <p className="text-ink-400 text-xs text-center">
-                💡 Use your OS Japanese IME to type in hiragana/katakana · Shift+Enter for new line
+                Use your OS Japanese IME · Shift+Enter for a new line
               </p>
             </div>
 
-            {/* Input area */}
+            {/* Input area — pb accounts for mobile bottom nav via chat-shell height */}
             <div className="p-4 border-t border-border bg-white flex-shrink-0">
               <div className="flex gap-3 items-end">
                 <div className="flex-1 relative">
@@ -703,6 +720,7 @@ export default function Conversation() {
                     onChange={e => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     rows={1}
+                    aria-label="Message to Sakura"
                     style={{ height: 'auto' }}
                     onInput={e => {
                       const t = e.target as HTMLTextAreaElement
@@ -714,15 +732,19 @@ export default function Conversation() {
 
                 {isStreaming ? (
                   <button
+                    type="button"
                     onClick={stopStream}
+                    aria-label="Stop generating"
                     className="h-12 w-12 rounded-xl bg-sakura/20 border border-sakura/40 text-sakura flex items-center justify-center hover:bg-sakura/30 transition-colors flex-shrink-0"
                   >
                     ■
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={sendMessage}
                     disabled={!input.trim()}
+                    aria-label="Send message"
                     className="h-12 w-12 rounded-xl bg-sakura text-white flex items-center justify-center
                                hover:bg-sakura-bright transition-colors flex-shrink-0
                                disabled:opacity-40 disabled:cursor-not-allowed

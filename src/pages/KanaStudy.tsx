@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../store'
 import { HIRAGANA, KATAKANA, HIRAGANA_GRID, KATAKANA_GRID, ROMAJI_MAP } from '../lib/kana-data'
+import { speak, stopSpeech, isTTSAvailable } from '../lib/tts'
 
 type Mode = 'chart' | 'drill'
 type KanaType = 'hiragana' | 'katakana' | 'both'
@@ -16,7 +17,10 @@ export default function KanaStudy() {
   const [sessionStats, setSessionStats] = useState({ correct: 0, wrong: 0 })
   const [showAnswer, setShowAnswer] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const { kanaProgress, updateKanaProgress } = useStore()
+  const { kanaProgress, updateKanaProgress, autoTts } = useStore()
+  const ttsAvailable = isTTSAvailable()
+
+  useEffect(() => () => { stopSpeech() }, [])
 
   const startDrill = useCallback((type: KanaType) => {
     const pool = type === 'hiragana' ? HIRAGANA : type === 'katakana' ? KATAKANA : [...HIRAGANA, ...KATAKANA]
@@ -36,6 +40,13 @@ export default function KanaStudy() {
   }, [])
 
   const currentKana = drillSet[currentIndex]
+
+  // Auto-speak each drill card so beginners hear the sound mapping
+  useEffect(() => {
+    if (mode === 'drill' && currentKana && ttsAvailable && autoTts) {
+      void speak(currentKana.kana)
+    }
+  }, [mode, currentIndex, currentKana, ttsAvailable, autoTts])
 
   const advance = useCallback(() => {
     setFeedback(null)
@@ -204,6 +215,17 @@ export default function KanaStudy() {
                 }`}>
                 <span className="japanese-text text-8xl text-ink-100 select-none">{currentKana.kana}</span>
                 <span className="text-ink-400 text-sm mt-2 capitalize">{currentKana.type}</span>
+                {ttsAvailable && (
+                  <button
+                    type="button"
+                    onClick={() => void speak(currentKana.kana)}
+                    className="mt-2 text-ink-400 hover:text-sakura transition-colors text-xl"
+                    aria-label={`Listen to ${currentKana.kana}`}
+                    title="Listen"
+                  >
+                    🔊
+                  </button>
+                )}
                 {showAnswer && (
                   <motion.span initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }}
                     className="text-gold font-mono text-2xl font-bold mt-2">{currentKana.romaji}</motion.span>

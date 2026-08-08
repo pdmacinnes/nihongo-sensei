@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 
-const filePath = 'C:/Users/Patrick/desktop/translationtool/src/lib/grammar-data.ts'
-const json = JSON.parse(readFileSync('C:/Users/Patrick/desktop/claude/grammar_additions.json', 'utf8'))
+const filePath = fileURLToPath(new URL('../src/lib/grammar-data.ts', import.meta.url))
+const json = JSON.parse(readFileSync(fileURLToPath(new URL('./data/grammar_additions.json', import.meta.url)), 'utf8'))
 
 // Validate cloze is substring of jp
 const issues = []

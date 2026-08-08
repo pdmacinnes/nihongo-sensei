@@ -1,11 +1,15 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import toast from 'react-hot-toast'
-import { useStore, VocabCardState, KanaProgress, WrongAnswerEntry, CustomVocabWord, DailyXpEntry, ConversationSession } from '../store'
+import {
+  useStore, VocabCardState, KanaProgress, WrongAnswerEntry,
+  CustomVocabWord, DailyXpEntry, ConversationSession, ReaderSession,
+} from '../store'
 import {
   isFirebaseConfigured, initFirebase,
   generateSyncCode, uploadProgress, downloadProgress,
 } from '../lib/firebase'
+import { scheduleStudyReminder, clearStudyReminder } from '../lib/reminders'
 
 export default function Settings() {
   const { username, setUsername, jlptLevel, setJlptLevel,
@@ -13,17 +17,20 @@ export default function Settings() {
           notificationsEnabled, setNotificationsEnabled,
           reminderTime, setReminderTime,
           showFurigana, setShowFurigana,
+          autoTts, setAutoTts,
           darkMode, setDarkMode,
           resetAllProgress, apiKey, setApiKey,
           syncCode, setSyncCode, lastSynced, setLastSynced } = useStore()
   const [localName, setLocalName] = useState(username)
-  const [localLimit, setLocalLimit] = useState(dailyNewCardLimit)
   const [localApiKey, setLocalApiKey] = useState(apiKey)
   const [showApiKey, setShowApiKey] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [syncInput, setSyncInput] = useState('')
   const [syncing, setSyncing] = useState(false)
   const firebaseReady = isFirebaseConfigured()
+
+  useEffect(() => { setLocalName(username) }, [username])
+  useEffect(() => { setLocalApiKey(apiKey) }, [apiKey])
 
   const getStateForSync = () => {
     const s = useStore.getState()
@@ -70,11 +77,20 @@ export default function Settings() {
     toast.success('Progress downloaded from cloud ✓')
   }
 
-  const save = () => {
-    setUsername(localName)
-    setDailyNewCardLimit(localLimit)
-    if (localApiKey !== apiKey) setApiKey(localApiKey)
-    toast.success('Settings saved!')
+  const saveName = () => {
+    const trimmed = localName.trim() || 'Learner'
+    if (trimmed !== username) {
+      setUsername(trimmed)
+      setLocalName(trimmed)
+      toast.success('Name saved')
+    }
+  }
+
+  const saveApiKey = () => {
+    if (localApiKey !== apiKey) {
+      setApiKey(localApiKey.trim())
+      toast.success(localApiKey.trim() ? 'API key saved' : 'API key cleared')
+    }
   }
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,24 +101,31 @@ export default function Settings() {
       try {
         const data = JSON.parse(ev.target?.result as string)
         if (!data.username || !Array.isArray(data.vocabCards)) throw new Error('Invalid backup file')
-        // Whitelist only known fields — never spread unknown data into store
         useStore.setState({
           username: typeof data.username === 'string' ? data.username : useStore.getState().username,
           jlptLevel: ['N5','N4','N3','N2','N1'].includes(data.jlptLevel) ? data.jlptLevel : 'N5',
           dailyNewCardLimit: typeof data.dailyNewCardLimit === 'number' ? data.dailyNewCardLimit : 10,
           streak: typeof data.streak === 'number' ? data.streak : 0,
+          streakFreezes: typeof data.streakFreezes === 'number' ? data.streakFreezes : 0,
           xp: typeof data.xp === 'number' ? data.xp : 0,
           totalXp: typeof data.totalXp === 'number' ? data.totalXp : 0,
+          lastStudyDate: typeof data.lastStudyDate === 'string' ? data.lastStudyDate : '',
           vocabCards: Array.isArray(data.vocabCards) ? data.vocabCards as VocabCardState[] : [],
           customWords: Array.isArray(data.customWords) ? data.customWords as CustomVocabWord[] : [],
           kanaProgress: data.kanaProgress && typeof data.kanaProgress === 'object' ? data.kanaProgress as Record<string, KanaProgress> : {},
+          kanjiProgress: data.kanjiProgress && typeof data.kanjiProgress === 'object'
+            ? data.kanjiProgress as Record<string, { correct: number; incorrect: number; mastered: boolean }>
+            : {},
           wrongAnswerLog: Array.isArray(data.wrongAnswerLog) ? data.wrongAnswerLog as WrongAnswerEntry[] : [],
           dailyXpHistory: Array.isArray(data.dailyXpHistory) ? data.dailyXpHistory as DailyXpEntry[] : [],
           conversations: Array.isArray(data.conversations) ? data.conversations as ConversationSession[] : [],
           totalConversations: typeof data.totalConversations === 'number' ? data.totalConversations : 0,
+          readerSessions: Array.isArray(data.readerSessions) ? data.readerSessions as ReaderSession[] : [],
+          showFurigana: typeof data.showFurigana === 'boolean' ? data.showFurigana : true,
+          autoTts: typeof data.autoTts === 'boolean' ? data.autoTts : true,
         })
         toast.success('Backup restored successfully!')
-        setLocalName(data.username)
+        setLocalName(typeof data.username === 'string' ? data.username : useStore.getState().username)
       } catch {
         toast.error('Invalid backup file — please use a file exported from this app.')
       }
@@ -117,16 +140,23 @@ export default function Settings() {
       exportedAt: new Date().toISOString(),
       username: state.username,
       jlptLevel: state.jlptLevel,
+      dailyNewCardLimit: state.dailyNewCardLimit,
       streak: state.streak,
+      streakFreezes: state.streakFreezes,
       xp: state.xp,
       totalXp: state.totalXp,
+      lastStudyDate: state.lastStudyDate,
       vocabCards: state.vocabCards,
       customWords: state.customWords,
       kanaProgress: state.kanaProgress,
+      kanjiProgress: state.kanjiProgress,
       wrongAnswerLog: state.wrongAnswerLog,
       dailyXpHistory: state.dailyXpHistory,
       conversations: state.conversations,
       totalConversations: state.totalConversations,
+      readerSessions: state.readerSessions,
+      showFurigana: state.showFurigana,
+      autoTts: state.autoTts,
     }
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -137,24 +167,6 @@ export default function Settings() {
     URL.revokeObjectURL(url)
   }
 
-  const scheduleNotification = (time: string) => {
-    const [h, m] = time.split(':').map(Number)
-    const now = new Date()
-    const next = new Date()
-    next.setHours(h, m, 0, 0)
-    if (next <= now) next.setDate(next.getDate() + 1)
-    const msUntil = next.getTime() - now.getTime()
-    setTimeout(() => {
-      if (Notification.permission === 'granted' && useStore.getState().notificationsEnabled) {
-        new Notification('日本語先生 — Time to study! 🌸', {
-          body: 'Your reviews are waiting. Keep your streak alive!',
-          icon: '/icon-192.png',
-        })
-        scheduleNotification(useStore.getState().reminderTime)
-      }
-    }, msUntil)
-  }
-
   const handleNotifications = async (enabled: boolean) => {
     if (enabled && Notification.permission === 'default') {
       const perm = await Notification.requestPermission()
@@ -162,15 +174,17 @@ export default function Settings() {
     }
     setNotificationsEnabled(enabled)
     if (enabled && Notification.permission === 'granted') {
-      scheduleNotification(reminderTime)
+      scheduleStudyReminder(reminderTime)
       toast.success(`Reminder set for ${reminderTime} daily`)
+    } else {
+      clearStudyReminder()
     }
   }
 
   const handleReminderTimeChange = (time: string) => {
     setReminderTime(time)
     if (notificationsEnabled && Notification.permission === 'granted') {
-      scheduleNotification(time)
+      scheduleStudyReminder(time)
       toast.success(`Reminder updated to ${time}`)
     }
   }
@@ -181,13 +195,29 @@ export default function Settings() {
     toast('All progress reset', { icon: '🗑️' })
   }
 
+  const Toggle = ({
+    on, onToggle, label, disabled,
+  }: { on: boolean; onToggle: () => void; label: string; disabled?: boolean }) => (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onToggle}
+      className={`relative w-12 h-6 rounded-full transition-all duration-300 disabled:opacity-40 ${on ? 'bg-jade' : 'bg-ink-500'}`}
+    >
+      <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ${on ? 'left-[1.625rem]' : 'left-0.5'}`} />
+    </button>
+  )
+
   return (
     <div className="p-4 md:p-6 max-w-2xl mx-auto">
       <div className="mb-7">
         <h1 className="page-title">
           <span className="japanese-text text-sakura">設定</span> Settings
         </h1>
-        <p className="text-ink-400 text-sm mt-0.5">Configure your learning experience</p>
+        <p className="text-ink-400 text-sm mt-0.5">Configure your learning experience · changes save automatically</p>
       </div>
 
       <div className="space-y-4">
@@ -198,15 +228,24 @@ export default function Settings() {
           </h2>
           <div className="space-y-4">
             <div>
-              <label className="text-ink-300 text-sm mb-1.5 block">Your name</label>
-              <input type="text" className="input-field" value={localName}
-                onChange={e => setLocalName(e.target.value)} placeholder="Your name" />
+              <label className="text-ink-300 text-sm mb-1.5 block" htmlFor="settings-name">Your name</label>
+              <input
+                id="settings-name"
+                type="text"
+                className="input-field"
+                value={localName}
+                onChange={e => setLocalName(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur() } }}
+                placeholder="Your name"
+              />
             </div>
             <div>
               <label className="text-ink-300 text-sm mb-1.5 block">JLPT Target Level</label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-2" role="group" aria-label="JLPT target level">
                 {(['N5', 'N4', 'N3', 'N2', 'N1'] as const).map(l => (
-                  <button key={l} onClick={() => setJlptLevel(l)}
+                  <button key={l} type="button" onClick={() => setJlptLevel(l)}
+                    aria-pressed={jlptLevel === l}
                     className={`py-2 rounded-lg border-2 text-sm font-bold transition-all ${
                       jlptLevel === l ? 'border-sakura bg-sakura/8 text-sakura shadow-sm' : 'border-border text-ink-300 hover:border-border-light bg-white'
                     }`}>
@@ -230,7 +269,9 @@ export default function Settings() {
                 className="input-field pr-20 font-mono text-sm"
                 value={localApiKey}
                 onChange={e => setLocalApiKey(e.target.value)}
+                onBlur={saveApiKey}
                 placeholder="sk-ant-..."
+                aria-label="Anthropic API key"
               />
               <button
                 type="button"
@@ -241,7 +282,7 @@ export default function Settings() {
               </button>
             </div>
             <p className="text-ink-400 text-xs leading-relaxed">
-              Your key is stored locally in your browser and never sent anywhere except directly to Anthropic.
+              Saved locally when you leave this field. Never sent anywhere except Anthropic.
               Get a key at <span className="text-sakura">console.anthropic.com</span>.
             </p>
             {!localApiKey && (
@@ -258,12 +299,19 @@ export default function Settings() {
             <span>📚</span> Study Settings
           </h2>
           <div>
-            <label className="text-ink-300 text-sm mb-1 block">
-              New cards per day: <span className="text-sakura font-bold">{localLimit}</span>
+            <label className="text-ink-300 text-sm mb-1 block" htmlFor="settings-daily-limit">
+              New cards per day: <span className="text-sakura font-bold">{dailyNewCardLimit}</span>
             </label>
-            <input type="range" min={5} max={50} step={5} value={localLimit}
-              onChange={e => setLocalLimit(Number(e.target.value))}
-              className="w-full accent-sakura" />
+            <input
+              id="settings-daily-limit"
+              type="range"
+              min={5}
+              max={50}
+              step={5}
+              value={dailyNewCardLimit}
+              onChange={e => setDailyNewCardLimit(Number(e.target.value))}
+              className="w-full accent-sakura"
+            />
             <div className="flex justify-between text-xs text-ink-400 mt-1">
               <span>5 (easy pace)</span>
               <span>25 (standard)</span>
@@ -290,24 +338,25 @@ export default function Settings() {
               <p className="text-ink-200 text-sm font-medium">Show Furigana</p>
               <p className="text-ink-400 text-xs">Display reading hints above kanji in reading practice</p>
             </div>
-            <button
-              onClick={() => setShowFurigana(!showFurigana)}
-              className={`relative w-12 h-6 rounded-full transition-all duration-300 ${showFurigana ? 'bg-jade' : 'bg-ink-500'}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ${showFurigana ? 'left-6.5' : 'left-0.5'}`} />
-            </button>
+            <Toggle on={showFurigana} onToggle={() => setShowFurigana(!showFurigana)} label="Show furigana" />
+          </div>
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+            <div>
+              <p className="text-ink-200 text-sm font-medium">Auto-play audio</p>
+              <p className="text-ink-400 text-xs">Speak Japanese automatically when flipping vocab cards</p>
+            </div>
+            <Toggle on={autoTts} onToggle={() => setAutoTts(!autoTts)} label="Auto-play audio" />
           </div>
           <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
             <div>
               <p className="text-ink-200 text-sm font-medium">Dark Mode</p>
               <p className="text-ink-400 text-xs">Switch to a dark theme for night studying</p>
             </div>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`relative w-12 h-6 rounded-full transition-all duration-300 ${darkMode ? 'bg-ink-200' : 'bg-ink-500'}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ${darkMode ? 'left-6.5' : 'left-0.5'}`} />
-            </button>
+            <Toggle
+              on={darkMode}
+              onToggle={() => setDarkMode(!darkMode)}
+              label="Dark mode"
+            />
           </div>
         </motion.div>
 
@@ -320,20 +369,19 @@ export default function Settings() {
             <div>
               <p className="text-ink-200 text-sm font-medium">Daily Study Reminder</p>
               <p className="text-ink-400 text-xs">
-                {Notification.permission === 'denied'
+                {typeof Notification !== 'undefined' && Notification.permission === 'denied'
                   ? 'Notifications blocked — allow in browser settings'
-                  : 'Get a reminder when you have reviews due'}
+                  : 'Get a reminder when you have reviews due (while the app is open)'}
               </p>
             </div>
-            <button
-              onClick={() => handleNotifications(!notificationsEnabled)}
-              disabled={Notification.permission === 'denied'}
-              className={`relative w-12 h-6 rounded-full transition-all duration-300 disabled:opacity-40 ${notificationsEnabled ? 'bg-jade' : 'bg-ink-500'}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-300 ${notificationsEnabled ? 'left-6.5' : 'left-0.5'}`} />
-            </button>
+            <Toggle
+              on={notificationsEnabled}
+              onToggle={() => handleNotifications(!notificationsEnabled)}
+              label="Daily study reminder"
+              disabled={typeof Notification !== 'undefined' && Notification.permission === 'denied'}
+            />
           </div>
-          {notificationsEnabled && Notification.permission === 'granted' && (
+          {notificationsEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted' && (
             <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
               <div>
                 <p className="text-ink-200 text-sm font-medium">Reminder Time</p>
@@ -344,6 +392,7 @@ export default function Settings() {
                 value={reminderTime}
                 onChange={e => handleReminderTimeChange(e.target.value)}
                 className="input-field w-auto py-1.5 text-sm"
+                aria-label="Reminder time"
               />
             </div>
           )}
@@ -378,7 +427,6 @@ export default function Settings() {
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Current sync code */}
               <div>
                 <p className="text-ink-300 text-sm font-medium mb-2">Your Sync Code</p>
                 {syncCode ? (
@@ -387,6 +435,7 @@ export default function Settings() {
                       {syncCode}
                     </div>
                     <button
+                      type="button"
                       onClick={() => { navigator.clipboard.writeText(syncCode); toast('Copied!', { icon: '📋' }) }}
                       className="btn-secondary px-3 py-2.5 text-sm"
                     >
@@ -394,7 +443,7 @@ export default function Settings() {
                     </button>
                   </div>
                 ) : (
-                  <button onClick={handleGenerateCode} className="btn-primary w-full">
+                  <button type="button" onClick={handleGenerateCode} className="btn-primary w-full">
                     Generate My Sync Code
                   </button>
                 )}
@@ -406,19 +455,17 @@ export default function Settings() {
                 )}
               </div>
 
-              {/* Upload / Download */}
               {syncCode && (
                 <div className="flex gap-2">
-                  <button onClick={handleUpload} disabled={syncing} className="btn-secondary flex-1 text-sm disabled:opacity-50">
+                  <button type="button" onClick={handleUpload} disabled={syncing} className="btn-secondary flex-1 text-sm disabled:opacity-50">
                     {syncing ? '...' : '↑ Upload now'}
                   </button>
-                  <button onClick={handleDownload} disabled={syncing} className="btn-secondary flex-1 text-sm disabled:opacity-50">
+                  <button type="button" onClick={handleDownload} disabled={syncing} className="btn-secondary flex-1 text-sm disabled:opacity-50">
                     {syncing ? '...' : '↓ Download now'}
                   </button>
                 </div>
               )}
 
-              {/* Link another device */}
               <div className="pt-3 border-t border-border">
                 <p className="text-ink-300 text-sm font-medium mb-2">Link this device to an existing account</p>
                 <div className="flex gap-2">
@@ -429,8 +476,10 @@ export default function Settings() {
                     value={syncInput}
                     onChange={e => setSyncInput(e.target.value.toUpperCase())}
                     maxLength={9}
+                    aria-label="Sync code to link"
                   />
                   <button
+                    type="button"
                     onClick={handleDownload}
                     disabled={syncing || syncInput.length < 9}
                     className="btn-primary px-4 disabled:opacity-40"
@@ -457,7 +506,7 @@ export default function Settings() {
                 <p className="text-ink-200 text-sm font-medium">Export Backup</p>
                 <p className="text-ink-400 text-xs">Download all your progress as a JSON file</p>
               </div>
-              <button onClick={handleExport} className="btn-secondary text-sm px-4">
+              <button type="button" onClick={handleExport} className="btn-secondary text-sm px-4">
                 ↓ Export
               </button>
             </div>
@@ -476,43 +525,41 @@ export default function Settings() {
                 <p className="text-sakura text-sm font-medium">Reset All Progress</p>
                 <p className="text-ink-400 text-xs">Permanently delete all learning data</p>
               </div>
-              <button onClick={() => setShowResetConfirm(true)} className="px-4 py-1.5 rounded-lg border-2 border-sakura/30 text-sakura text-sm font-medium hover:bg-sakura/8 transition-all">
+              <button type="button" onClick={() => setShowResetConfirm(true)} className="px-4 py-1.5 rounded-lg border-2 border-sakura/30 text-sakura text-sm font-medium hover:bg-sakura/8 transition-all">
                 Reset
               </button>
             </div>
           </div>
         </motion.div>
-
-        <button onClick={save} className="btn-primary w-full py-3 rounded-xl font-semibold text-base">
-          Save Settings
-        </button>
       </div>
 
-      {/* Reset confirmation modal */}
       <AnimatePresence>
         {showResetConfirm && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setShowResetConfirm(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reset-dialog-title"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"
+              className="bg-white dark:bg-[#1a1a2e] rounded-2xl p-6 max-w-sm w-full shadow-xl"
               onClick={e => e.stopPropagation()}
             >
               <div className="text-center mb-5">
                 <span className="text-4xl">⚠️</span>
-                <h2 className="text-ink-100 font-bold text-lg mt-3">Reset All Progress?</h2>
+                <h2 id="reset-dialog-title" className="text-ink-100 font-bold text-lg mt-3">Reset All Progress?</h2>
                 <p className="text-ink-400 text-sm mt-2">
-                  This will permanently delete your SRS cards, kana progress, XP, streaks, conversations, and wrong answer log. This cannot be undone.
+                  This will permanently delete your SRS cards, kana/kanji progress, XP, streaks, conversations, and reading history. This cannot be undone.
                 </p>
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setShowResetConfirm(false)} className="btn-secondary flex-1">
+                <button type="button" onClick={() => setShowResetConfirm(false)} className="btn-secondary flex-1">
                   Cancel
                 </button>
-                <button onClick={handleReset} className="flex-1 py-2 rounded-xl bg-sakura text-white font-semibold hover:bg-sakura/90 transition-all">
+                <button type="button" onClick={handleReset} className="flex-1 py-2 rounded-xl bg-sakura text-white font-semibold hover:bg-sakura/90 transition-all">
                   Reset Everything
                 </button>
               </div>

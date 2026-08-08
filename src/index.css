@@ -10,7 +10,7 @@
   body {
     background-color: #faf9f5;
     color: #1a1a2a;
-    font-family: 'Inter', 'Noto Sans JP', 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Meiryo', system-ui, sans-serif;
+    font-family: 'Figtree', 'Noto Sans JP', 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Meiryo', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
@@ -63,7 +63,17 @@
     box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
   }
 
-  .japanese-text { font-family: 'Noto Sans JP', 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', 'MS PGothic', sans-serif; }
+  .japanese-text {
+    font-family: 'Noto Sans JP', 'Yu Gothic UI', 'Yu Gothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Meiryo', 'MS PGothic', sans-serif;
+  }
+
+  /* Slightly larger JP on study surfaces for readability */
+  .study-jp {
+    font-family: 'Noto Sans JP', 'Yu Gothic UI', 'Hiragino Sans', 'Meiryo', sans-serif;
+    font-size: 1.125em;
+    line-height: 1.7;
+    letter-spacing: 0.02em;
+  }
 
   .furigana-text {
     font-family: 'Noto Sans JP', sans-serif;
@@ -228,6 +238,82 @@
 }
 .dark .btn-secondary:hover { background-color: #2a2a45; }
 .dark .xp-bar { background-color: #2a2a45; }
+.dark .chat-bubble-ai {
+  background-color: #1a1a2e;
+  border-color: #2a2a45;
+  color: #e8e8f0;
+}
+.dark .chat-bubble-user {
+  background-color: rgba(201, 75, 75, 0.15);
+  border-color: rgba(201, 75, 75, 0.35);
+}
+.dark .kana-grid-cell {
+  background-color: #1a1a2e;
+  border-color: #2a2a45;
+}
+.dark .tag-blue { background-color: rgba(59, 130, 246, 0.15); color: #93c5fd; border-color: rgba(59, 130, 246, 0.3); }
+.dark .tag-purple { background-color: rgba(168, 85, 247, 0.15); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.3); }
+.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.12) !important; }
+.dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.12) !important; }
+.dark .border-blue-200 { border-color: rgba(59, 130, 246, 0.3) !important; }
+.dark .border-orange-200 { border-color: rgba(249, 115, 22, 0.3) !important; }
+.dark .text-blue-600 { color: #93c5fd !important; }
+.dark .text-orange-500 { color: #fb923c !important; }
+.dark .mobile-bottom-nav,
+.dark .mobile-top-header,
+.dark .more-drawer {
+  background-color: #13131f !important;
+  border-color: #2a2a45 !important;
+}
+.dark ::-webkit-scrollbar-track { background: #13131f; }
+.dark ::-webkit-scrollbar-thumb { background: #2a2a45; }
+
+/* Dark mode — leftover light-only utilities */
+.dark .bg-washi { background-color: #0f0f1a; }
+.dark .shadow-card,
+.dark .shadow-sm,
+.dark .shadow-card-md { box-shadow: 0 1px 3px rgba(0,0,0,0.35); }
+.dark .nav-item.active {
+  color: #e88a8a !important;
+  border-color: rgba(201,75,75,0.35);
+  background-color: rgba(201,75,75,0.12) !important;
+}
+.dark .tag-sakura { background-color: rgba(201,75,75,0.15); color: #e88a8a; border-color: rgba(201,75,75,0.35); }
+.dark .tag-gold { background-color: rgba(176,125,26,0.18); color: #e0b45a; border-color: rgba(176,125,26,0.35); }
+.dark .tag-jade { background-color: rgba(45,138,94,0.18); color: #6dcca0; border-color: rgba(45,138,94,0.35); }
+.dark .bg-sakura\/5,
+.dark .bg-sakura\/8,
+.dark .bg-sakura\/10 { background-color: rgba(201,75,75,0.12) !important; }
+.dark .bg-gold\/5,
+.dark .bg-gold\/8 { background-color: rgba(176,125,26,0.12) !important; }
+.dark .bg-jade\/5,
+.dark .bg-jade\/8 { background-color: rgba(45,138,94,0.12) !important; }
+.dark .ring-offset-1 { --tw-ring-offset-color: #0f0f1a; }
+.heatmap-empty { background: rgba(0,0,0,0.05); }
+.dark .heatmap-empty { background: rgba(255,255,255,0.06); }
+.dark .hover\:bg-bg-secondary:hover { background-color: #1e1e32 !important; }
+.dark .hover\:bg-white:hover { background-color: #1e1e32 !important; }
+.dark ::selection { background: rgba(201,75,75,0.35); color: #e8e8f0; }
+.dark .btn-ghost:hover { background-color: #1e1e32; color: #c8c8e0; }
+.dark .xp-bar-fill { filter: brightness(1.05); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Conversation fills viewport minus mobile header + bottom nav */
+.chat-shell {
+  height: calc(100dvh - 3.25rem - 56px - env(safe-area-inset-bottom, 0px));
+  min-height: 0;
+}
+@media (min-width: 768px) {
+  .chat-shell { height: 100vh; }
+}
 
 /* ── Mobile ── */
 

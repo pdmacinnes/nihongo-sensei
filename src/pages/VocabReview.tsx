@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Anthropic from '@anthropic-ai/sdk'
 import toast from 'react-hot-toast'
 import { useStore } from '../store'
 import { VOCAB_DATA } from '../lib/vocab-data'
 import { SRSRating, getMaturityLabel, getMaturityColor } from '../lib/srs'
-import { speak, isTTSAvailable } from '../lib/tts'
+import { speak, stopSpeech, isTTSAvailable } from '../lib/tts'
 
 type Tab = 'review' | 'listen' | 'leeches' | 'quiz' | 'wordbank' | 'browse'
 
@@ -178,6 +178,9 @@ export default function VocabReview() {
   // Review session
   const [flipped, setFlipped] = useState(false)
   const [currentIdx, setCurrentIdx] = useState(0)
+  // Fixed card IDs for this study session — getDueCards() shrinks after each rating,
+  // so indexing into the live due list would skip cards.
+  const [sessionIds, setSessionIds] = useState<string[]>([])
   const [sessionDone, setSessionDone] = useState(false)
   const [sessionStats, setSessionStats] = useState({ again: 0, hard: 0, good: 0, easy: 0 })
   const lastRatingRef = useRef<SRSRating | null>(null)
@@ -223,7 +226,7 @@ export default function VocabReview() {
 
   const {
     vocabCards, reviewVocabCard, addVocabCard, getDueCards, dailyNewCardLimit,
-    showFurigana, setShowFurigana, getLeeches, undoLastVocabRating, lastVocabCardSnapshot,
+    showFurigana, setShowFurigana, autoTts, getLeeches, undoLastVocabRating, lastVocabCardSnapshot,
     customWords, addCustomWord, removeCustomWord, jlptLevel,
   } = useStore()
 
@@ -231,8 +234,22 @@ export default function VocabReview() {
   const leeches = getLeeches()
   const allWords = [...VOCAB_DATA, ...customWords]
 
-  const currentSRSCard = dueCards[currentIdx]
+  // Seed a session queue once when due cards appear (or after reset clears sessionIds).
+  useEffect(() => {
+    if (sessionIds.length === 0 && !sessionDone && dueCards.length > 0) {
+      setSessionIds(dueCards.map(c => c.id))
+      setCurrentIdx(0)
+    }
+  }, [dueCards, sessionIds.length, sessionDone])
+
+  const sessionCards = useMemo(
+    () => sessionIds.map(id => vocabCards.find(c => c.id === id)).filter((c): c is NonNullable<typeof c> => !!c),
+    [sessionIds, vocabCards],
+  )
+
+  const currentSRSCard = sessionCards[currentIdx] ?? null
   const currentWord = currentSRSCard ? allWords.find(w => w.id === currentSRSCard.wordId) : null
+  const sessionTotal = sessionIds.length
 
   const leechCard = leeches[leechIdx]
   const leechWord = leechCard ? allWords.find(w => w.id === leechCard.wordId) : null
@@ -248,27 +265,32 @@ export default function VocabReview() {
     setAiExampleLoading(false)
   }, [currentIdx])
 
-  // Auto-TTS on flip
+  // Stop speech when leaving the page
+  useEffect(() => () => { stopSpeech() }, [])
+
+  // Auto-TTS on flip (respect Settings → Auto-play audio)
   useEffect(() => {
-    if (flipped && currentWord && ttsAvailable) {
-      speak(currentWord.sentenceJp)
+    if (flipped && currentWord && ttsAvailable && autoTts) {
+      void speak(currentWord.sentenceJp)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flipped])
+  }, [flipped, autoTts])
 
-  // Auto-play listening drill
+  // Auto-play listening drill (listen tab always needs audio)
   useEffect(() => {
     if (tab === 'listen' && listenWord && ttsAvailable) {
-      speak(listenWord.japanese)
+      void speak(listenWord.japanese)
       setListenInput('')
       setListenResult('idle')
       setTimeout(() => listenInputRef.current?.focus(), 100)
+    } else if (tab !== 'listen') {
+      stopSpeech()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, listenIdx])
 
   const handleRate = useCallback((rating: SRSRating, source: 'review' | 'leeches' = 'review') => {
-    const card = source === 'leeches' ? leeches[leechIdx] : dueCards[currentIdx]
+    const card = source === 'leeches' ? leeches[leechIdx] : sessionCards[currentIdx]
     if (!card) return
 
     reviewVocabCard(card.id, rating)
@@ -281,7 +303,7 @@ export default function VocabReview() {
       setShowUndo(true)
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
       undoTimerRef.current = setTimeout(() => setShowUndo(false), 4000)
-      if (currentIdx + 1 >= dueCards.length) {
+      if (currentIdx + 1 >= sessionIds.length) {
         setSessionDone(true)
         setShowUndo(false)
       } else {
@@ -295,7 +317,7 @@ export default function VocabReview() {
         setLeechIdx(i => i + 1)
       }
     }
-  }, [currentIdx, dueCards, leeches, leechIdx, reviewVocabCard])
+  }, [currentIdx, sessionCards, sessionIds.length, leeches, leechIdx, reviewVocabCard])
 
   const handleUndo = useCallback(() => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current)
@@ -311,6 +333,8 @@ export default function VocabReview() {
   }, [undoLastVocabRating])
 
   const resetSession = () => {
+    const due = getDueCards()
+    setSessionIds(due.map(c => c.id))
     setCurrentIdx(0)
     setFlipped(false)
     setSessionDone(false)
@@ -319,7 +343,7 @@ export default function VocabReview() {
   }
 
   const fetchAiExample = useCallback(async (word: typeof VOCAB_DATA[0]) => {
-    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string
+    const apiKey = useStore.getState().apiKey || (import.meta.env.VITE_ANTHROPIC_API_KEY as string)
     if (!apiKey) { toast.error('API key not set'); return }
     setAiExampleLoading(true)
     setAiExample(null)
@@ -444,7 +468,7 @@ export default function VocabReview() {
         {/* ── REVIEW TAB ── */}
         {tab === 'review' && (
           <motion.div key="review" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            {dueCards.length === 0 ? (
+            {sessionTotal === 0 && dueCards.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <span className="text-5xl mb-4">🎉</span>
                 <h2 className="text-2xl font-bold text-ink-100 mb-2">All caught up!</h2>
@@ -502,15 +526,15 @@ export default function VocabReview() {
                 <div className="w-full max-w-lg mb-4">
                   <div className="flex justify-between text-xs text-ink-400 mb-1.5">
                     <div className="flex items-center gap-2">
-                      <span>{currentIdx + 1} / {dueCards.length}</span>
+                      <span>{currentIdx + 1} / {sessionTotal}</span>
                       {isNewCard && <span className="tag-sakura">New</span>}
                       {isLearning && <span className="tag bg-blue-50 text-blue-600 border-blue-200">Learning</span>}
                     </div>
-                    <span>{dueCards.length - currentIdx - 1} remaining</span>
+                    <span>{Math.max(0, sessionTotal - currentIdx - 1)} remaining</span>
                   </div>
                   <div className="xp-bar">
                     <div className="h-full rounded-full bg-gradient-to-r from-sakura to-sakura-bright transition-all duration-500"
-                      style={{ width: `${(currentIdx / dueCards.length) * 100}%` }} />
+                      style={{ width: `${sessionTotal ? (currentIdx / sessionTotal) * 100 : 0}%` }} />
                   </div>
                 </div>
 

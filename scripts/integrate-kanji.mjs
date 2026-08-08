@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from 'fs'
+import { fileURLToPath } from 'url'
 
-const filePath = 'C:/Users/Patrick/desktop/translationtool/src/lib/kanji-data.ts'
+const filePath = fileURLToPath(new URL('../src/lib/kanji-data.ts', import.meta.url))
 
 function appendKanjiFromFile(jsonFile, label) {
   const json = JSON.parse(readFileSync(jsonFile, 'utf8'))
@@ -36,4 +37,4 @@ function appendKanjiFromFile(jsonFile, label) {
   return json.length
 }
 
-appendKanjiFromFile('C:/Users/Patrick/desktop/claude/kanji_n3_n2_n1.json', 'N3/N2/N1 Kanji')
+appendKanjiFromFile(fileURLToPath(new URL('./data/kanji_n3_n2_n1.json', import.meta.url)), 'N3/N2/N1 Kanji')

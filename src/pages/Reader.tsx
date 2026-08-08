@@ -53,16 +53,40 @@ function formatSessionDate(ts: number): string {
 
 function TokenSpan({ token, onClick }: { token: Token; onClick: () => void }) {
   if (!token.surface.trim()) return <span>{token.surface}</span>
-  const clickable = 'cursor-pointer hover:bg-sakura/10 rounded transition-colors px-0.5 -mx-0.5'
+  const clickable = 'cursor-pointer hover:bg-sakura/10 rounded transition-colors px-0.5 -mx-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-sakura/50'
+  const activate = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      onClick()
+    }
+  }
   if (token.hasKanji && token.reading) {
     return (
-      <ruby onClick={onClick} className={clickable}>
+      <ruby
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        onKeyDown={activate}
+        className={clickable}
+        aria-label={`Look up ${token.surface}`}
+      >
         {token.surface}
         <rt className="text-[0.55em] text-ink-400">{token.reading}</rt>
       </ruby>
     )
   }
-  return <span onClick={onClick} className={clickable}>{token.surface}</span>
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={activate}
+      className={clickable}
+      aria-label={`Look up ${token.surface}`}
+    >
+      {token.surface}
+    </span>
+  )
 }
 
 export default function Reader() {
