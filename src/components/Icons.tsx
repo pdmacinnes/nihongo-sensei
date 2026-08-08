@@ -181,3 +181,12 @@ export function IconArrow(p: IconProps) {
     </Svg>
   )
 }
+
+export function IconMic(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+    </Svg>
+  )
+}

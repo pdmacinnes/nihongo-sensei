@@ -605,15 +605,14 @@ export default function VocabReview() {
           <motion.div key="listen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             {dueCards.length === 0 ? (
               <div className="flex flex-col items-center py-20 text-center">
-                <span className="text-4xl mb-3">👂</span>
-                <p className="text-ink-200 font-medium">No cards to drill yet.</p>
+                <p className="text-ink-200 font-medium">No cards to drill yet</p>
                 <p className="text-ink-400 text-sm mt-1">Add vocabulary cards first, then come back.</p>
               </div>
             ) : listenIdx >= dueCards.length ? (
               <div className="flex flex-col items-center py-16 text-center">
-                <span className="text-5xl mb-4">👂</span>
-                <h2 className="text-xl font-bold text-ink-100 mb-1">Listening session done!</h2>
-                <button onClick={() => setListenIdx(0)} className="btn-primary mt-4">Start again</button>
+                <h2 className="text-xl font-bold text-ink-100 mb-1">Listening session done</h2>
+                <p className="text-ink-400 text-sm mb-4">Nice work — run it again anytime.</p>
+                <button onClick={() => setListenIdx(0)} className="btn-primary">Start again</button>
               </div>
             ) : listenWord && (
               <div className="flex flex-col items-center">
@@ -623,21 +622,20 @@ export default function VocabReview() {
                     <span>{dueCards.length - listenIdx - 1} remaining</span>
                   </div>
                   <div className="xp-bar">
-                    <div className="h-full rounded-full bg-gradient-to-r from-blue-400 to-jade transition-all duration-500"
+                    <div className="h-full rounded-full bg-gradient-to-r from-sakura to-jade transition-all duration-500"
                       style={{ width: `${(listenIdx / dueCards.length) * 100}%` }} />
                   </div>
                 </div>
 
                 <div className="w-full max-w-lg">
                   <div className="card text-center mb-4">
-                    <p className="text-ink-400 text-sm mb-4">Listen and type what you hear in Japanese</p>
-                    <p className="text-ink-300 text-sm italic mb-5">"{listenWord.english}"</p>
+                    <p className="text-ink-400 text-sm mb-5">Listen and type what you hear in Japanese</p>
 
-                    <button onClick={() => speak(listenWord.japanese)}
+                    <button type="button" onClick={() => void speak(listenWord.japanese)}
                       className="w-16 h-16 rounded-full bg-sakura/10 border-2 border-sakura/30
-                                 hover:bg-sakura/20 transition-all text-3xl mx-auto mb-4 flex items-center justify-center"
+                                 hover:bg-sakura/20 transition-all mx-auto mb-4 flex items-center justify-center text-sakura text-sm font-semibold"
                       title="Play again">
-                      🔊
+                      Play
                     </button>
 
                     {listenResult === 'idle' ? (
@@ -655,7 +653,7 @@ export default function VocabReview() {
                             }
                           }}
                           autoComplete="off" />
-                        <button onClick={() => {
+                        <button type="button" onClick={() => {
                           const correct = listenInput.trim() === listenWord.japanese ||
                             listenInput.trim() === listenWord.reading
                           setListenResult(correct ? 'correct' : 'wrong')
@@ -672,13 +670,13 @@ export default function VocabReview() {
                             : 'border-sakura/40 bg-sakura/5'
                         }`}>
                           <p className={`font-bold text-lg ${listenResult === 'correct' ? 'text-jade' : 'text-sakura'}`}>
-                            {listenResult === 'correct' ? '✓ Correct!' : '✗ Incorrect'}
+                            {listenResult === 'correct' ? 'Correct' : 'Incorrect'}
                           </p>
                           <p className="japanese-text text-2xl font-bold text-ink-100 mt-1">{listenWord.japanese}</p>
                           {showFurigana && <p className="text-ink-400 text-sm">{listenWord.reading}</p>}
                           <p className="text-ink-300 text-sm mt-1">{listenWord.english}</p>
                         </div>
-                        <button onClick={() => {
+                        <button type="button" onClick={() => {
                           if (listenIdx + 1 >= dueCards.length) setListenIdx(dueCards.length)
                           else setListenIdx(i => i + 1)
                         }} className="btn-primary w-full">

@@ -2,6 +2,22 @@
 
 All notable changes to Nihongo Sensei are documented here.
 
+## [1.3.0] — 2026-08-08
+
+### Features
+- **Anki export** — vocab, kanji, and grammar `.apkg` decks from Settings (Anki native Japanese TTS tags)
+- **Reading Immersion** section on Progress (chars, words mined, days read, source split)
+- **Grammar chips in Reader** — heuristic links from sentences to matching grammar patterns
+- **Speech input** in Conversation (Chrome/Edge Web Speech API; mic hidden where unavailable)
+- **Listening drill XP** — +3 XP on correct answers
+- PWA polish — theme color, iOS home-screen meta tags, icon sizing
+
+### Fixes
+- Progress charts use **local calendar dates** (not UTC) for XP and reading immersion
+- Stop speech recognition when sending a chat message
+- Listening drill no longer shows English before you answer
+- Grammar Anki export ignores log entries missing a pattern
+
 ## [1.2.0] — 2026-08-07
 
 ### UI

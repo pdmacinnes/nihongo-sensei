@@ -8,6 +8,14 @@ const SCENARIO_LABELS: Record<string, string> = {
   introduction: '自己紹介', weather: '天気', hobby: '趣味', business: 'ビジネス',
 }
 
+/** Local calendar date YYYY-MM-DD (not UTC). */
+function localDateStr(d = new Date()) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export default function ProgressPage() {
   const { streak, totalXp, jlptLevel, vocabCards, kanaProgress,
           conversations, totalConversations, totalKanaCorrect, totalKanaIncorrect,
@@ -23,11 +31,11 @@ export default function ProgressPage() {
   const maturityCounts: Record<string, number> = { New: 0, Learning: 0, Young: 0, Maturing: 0, Mature: 0, Mastered: 0 }
   vocabCards.forEach(c => { const l = getMaturityLabel(c); maturityCounts[l] = (maturityCounts[l] || 0) + 1 })
 
-  const today = new Date()
+  const todayKey = localDateStr()
   const last30Days = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date(today)
+    const d = new Date()
     d.setDate(d.getDate() - (29 - i))
-    return d.toISOString().split('T')[0]
+    return localDateStr(d)
   })
   const xpByDay = Object.fromEntries(dailyXpHistory.map(e => [e.date, e.xp]))
   const chartData = last30Days.map(date => ({ date, xp: xpByDay[date] || 0 }))
@@ -41,7 +49,7 @@ export default function ProgressPage() {
     return Array.from({ length: 28 }, (_, i) => {
       const d = new Date(lastMonday)
       d.setDate(lastMonday.getDate() - (27 - i))
-      const dateStr = d.toISOString().split('T')[0]
+      const dateStr = localDateStr(d)
       return { date: dateStr, xp: xpByDay[dateStr] || 0, label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) }
     })
   }, [xpByDay])
@@ -57,7 +65,7 @@ export default function ProgressPage() {
       for (let d = 0; d < 7; d++) {
         const day = new Date(weekStart)
         day.setDate(weekStart.getDate() + d)
-        total += xpByDay[day.toISOString().split('T')[0]] || 0
+        total += xpByDay[localDateStr(day)] || 0
       }
       weeks.push({ label: w === 0 ? 'This wk' : `${w}w ago`, xp: total })
     }
@@ -76,7 +84,7 @@ export default function ProgressPage() {
   const charsByDay = useMemo(() => {
     const map: Record<string, number> = {}
     readerSessions.forEach(s => {
-      const day = new Date(s.startedAt).toISOString().split('T')[0]
+      const day = localDateStr(new Date(s.startedAt))
       map[day] = (map[day] || 0) + s.charsRead
     })
     return map
@@ -86,7 +94,7 @@ export default function ProgressPage() {
 
   const totalCharsRead = readerSessions.reduce((sum, s) => sum + s.charsRead, 0)
   const totalWordsMined = readerSessions.reduce((sum, s) => sum + s.newWordsAdded, 0)
-  const daysRead = new Set(readerSessions.map(s => new Date(s.startedAt).toISOString().split('T')[0])).size
+  const daysRead = new Set(readerSessions.map(s => localDateStr(new Date(s.startedAt)))).size
   const captureCount = readerSessions.filter(s => s.source === 'capture').length
   const manualCount = readerSessions.length - captureCount
 
@@ -143,7 +151,7 @@ export default function ProgressPage() {
         <h2 className="text-ink-200 font-semibold mb-3">Daily XP — Last 30 Days</h2>
         <div className="flex items-end gap-0.5 h-24">
           {chartData.map(d => {
-            const isToday = d.date === today.toISOString().split('T')[0]
+            const isToday = d.date === todayKey
             const heightPct = d.xp > 0 ? Math.max((d.xp / maxXp) * 100, 8) : 2
             return (
               <div key={d.date} className="flex-1 flex flex-col items-center justify-end group relative" title={`${d.date}: ${d.xp} XP`}>
@@ -182,7 +190,7 @@ export default function ProgressPage() {
         <div className="grid gap-0.5" style={{ gridTemplateColumns: 'repeat(7, 1fr)' }}>
           {heatmapDays.map(day => {
             const intensity = day.xp > 0 ? Math.max(0.15, day.xp / heatmapMax) : 0
-            const isToday = day.date === today.toISOString().split('T')[0]
+            const isToday = day.date === todayKey
             return (
               <div
                 key={day.date}
@@ -332,7 +340,7 @@ export default function ProgressPage() {
             <p className="text-ink-400 text-xs mb-2">Characters read — last 30 days</p>
             <div className="flex items-end gap-0.5 h-20 mb-1">
               {readerChartData.map(d => {
-                const isToday = d.date === today.toISOString().split('T')[0]
+                const isToday = d.date === todayKey
                 const heightPct = d.chars > 0 ? Math.max((d.chars / maxReaderChars) * 100, 8) : 2
                 return (
                   <div key={d.date} className="flex-1 flex flex-col items-center justify-end group relative" title={`${d.date}: ${d.chars} chars`}>

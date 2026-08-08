@@ -502,7 +502,7 @@ CONTEXT_NOTE: <if yes, a short note under 15 words on what changes; if no, leave
                       key={g.id}
                       to="/grammar"
                       onClick={() => setActiveWord(null)}
-                      className="text-xs px-2 py-0.5 rounded-full border font-medium bg-jade/10 text-jade border-jade/25 japanese-text hover:bg-jade/20 transition-colors"
+                      className="tag-jade japanese-text hover:bg-jade/20 transition-colors"
                     >
                       文法: {g.pattern}
                     </Link>

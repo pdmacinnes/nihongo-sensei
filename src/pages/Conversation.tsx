@@ -5,7 +5,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import toast from 'react-hot-toast'
 import { useStore } from '../store'
 import { VOCAB_DATA } from '../lib/vocab-data'
-import { IconSakura } from '../components/Icons'
+import { IconSakura, IconMic } from '../components/Icons'
 import { isSpeechRecognitionAvailable, startRecognition, RecognitionHandle } from '../lib/speech-recognition'
 
 const SCENARIOS = [
@@ -226,6 +226,11 @@ export default function Conversation() {
   const sendMessage = useCallback(async () => {
     if (!input.trim() || isStreaming) return
 
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+    }
+
     const userText = input.trim()
     setInput('')
     setError('')
@@ -315,7 +320,7 @@ export default function Conversation() {
     } finally {
       setIsStreaming(false)
     }
-  }, [input, isStreaming, messages, selectedScenario, selectedLevel, addMessage, addXP])
+  }, [input, isStreaming, isRecording, messages, selectedScenario, selectedLevel, addMessage, addXP])
 
   const stopStream = () => {
     abortRef.current?.abort()
@@ -770,7 +775,7 @@ export default function Conversation() {
                         : 'bg-white text-ink-400 border-border hover:border-sakura/40 hover:text-sakura'
                     }`}
                   >
-                    🎤
+                    <IconMic size={20} />
                   </button>
                 )}
 

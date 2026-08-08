@@ -239,7 +239,9 @@ export default function Settings() {
   const handleGrammarAnkiExport = async () => {
     const state = useStore.getState()
     const practicedPatterns = new Set(
-      state.wrongAnswerLog.filter(e => e.type === 'grammar').map(e => e.grammarPattern)
+      state.wrongAnswerLog
+        .filter(e => e.type === 'grammar' && e.grammarPattern)
+        .map(e => e.grammarPattern as string)
     )
     const entries = GRAMMAR_DATA.filter(g => practicedPatterns.has(g.pattern))
 
@@ -614,32 +616,49 @@ export default function Settings() {
                 <input type="file" accept=".json" className="hidden" onChange={handleImport} />
               </label>
             </div>
-            <div className="border-t border-border pt-3 flex items-center justify-between">
+            <div className="border-t border-border pt-3 space-y-3">
               <div>
                 <p className="text-ink-200 text-sm font-medium">Export to Anki</p>
-                <p className="text-ink-400 text-xs">Download your vocab deck as an .apkg file to import into Anki</p>
+                <p className="text-ink-400 text-xs">Download .apkg decks to import into Anki (uses Anki&apos;s built-in Japanese TTS)</p>
               </div>
-              <button type="button" onClick={handleAnkiExport} disabled={exportingAnki} className="btn-secondary text-sm px-4 disabled:opacity-50">
-                {exportingAnki ? '...' : '↓ Export'}
-              </button>
-            </div>
-            <div className="border-t border-border pt-3 flex items-center justify-between">
-              <div>
-                <p className="text-ink-200 text-sm font-medium">Export Kanji to Anki</p>
-                <p className="text-ink-400 text-xs">Download kanji you've practiced as an .apkg file</p>
-              </div>
-              <button type="button" onClick={handleKanjiAnkiExport} disabled={exportingKanjiAnki} className="btn-secondary text-sm px-4 disabled:opacity-50">
-                {exportingKanjiAnki ? '...' : '↓ Export'}
-              </button>
-            </div>
-            <div className="border-t border-border pt-3 flex items-center justify-between">
-              <div>
-                <p className="text-ink-200 text-sm font-medium">Export Grammar to Anki</p>
-                <p className="text-ink-400 text-xs">Download grammar points you've practiced as an .apkg file</p>
-              </div>
-              <button type="button" onClick={handleGrammarAnkiExport} disabled={exportingGrammarAnki} className="btn-secondary text-sm px-4 disabled:opacity-50">
-                {exportingGrammarAnki ? '...' : '↓ Export'}
-              </button>
+              {[
+                {
+                  key: 'vocab',
+                  label: 'Vocab deck',
+                  desc: 'Words currently in your SRS deck',
+                  onClick: handleAnkiExport,
+                  busy: exportingAnki,
+                },
+                {
+                  key: 'kanji',
+                  label: 'Kanji deck',
+                  desc: 'Kanji you\'ve practiced in Kanji Study',
+                  onClick: handleKanjiAnkiExport,
+                  busy: exportingKanjiAnki,
+                },
+                {
+                  key: 'grammar',
+                  label: 'Grammar deck',
+                  desc: 'Grammar points from your wrong-answer log',
+                  onClick: handleGrammarAnkiExport,
+                  busy: exportingGrammarAnki,
+                },
+              ].map(row => (
+                <div key={row.key} className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-ink-200 text-sm">{row.label}</p>
+                    <p className="text-ink-400 text-xs truncate">{row.desc}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={row.onClick}
+                    disabled={row.busy}
+                    className="btn-secondary text-sm px-4 flex-shrink-0 disabled:opacity-50"
+                  >
+                    {row.busy ? 'Exporting…' : 'Export'}
+                  </button>
+                </div>
+              ))}
             </div>
             <div className="border-t border-border pt-3 flex items-center justify-between">
               <div>

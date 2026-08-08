@@ -8,7 +8,7 @@
 
 <p align="center"><strong><a href="https://github.com/pdmacinnes/nihongo-sensei/releases/latest">⬇ Download the desktop app</a></strong> — Windows installer or portable .exe, no build required</p>
 
-<p align="center"><a href="CHANGELOG.md">Changelog</a> · Latest release: <strong>v1.2.0</strong></p>
+<p align="center"><a href="CHANGELOG.md">Changelog</a> · Latest release: <strong>v1.3.0</strong></p>
 
 ## Quick Start
 
@@ -33,7 +33,7 @@ Copy `.env.example` to `.env` if you want, or set your Anthropic API key in **Se
 | 文法 Grammar | Browse patterns and cloze drills (N5–N4 focus) |
 | 読書 Reading practice | Graded reading exercises |
 | 進捗 Progress | Streaks, XP, SRS maturity, activity charts, achievements |
-| 設定 Settings | API key, dark mode, auto-TTS, daily study reminders, cloud sync code |
+| 設定 Settings | API key, dark mode, auto-TTS, daily reminders, cloud sync, Anki .apkg export |
 
 Home highlights **what to do next** (due reviews, kana, or chat) with quick links to Chat and Reader.
 
