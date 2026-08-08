@@ -4,9 +4,11 @@
 
 <h1 align="center">日本語先生 — Nihongo Sensei</h1>
 
-<p align="center">A Japanese learning app with AI conversation practice, vocab SRS, kana drills, and progress tracking.</p>
+<p align="center">Practice real Japanese with Sakura — AI conversation, immersion reading, SRS vocab, kana/kanji/grammar, and progress tracking.</p>
 
 <p align="center"><strong><a href="https://github.com/pdmacinnes/nihongo-sensei/releases/latest">⬇ Download the desktop app</a></strong> — Windows installer or portable .exe, no build required</p>
+
+<p align="center"><a href="CHANGELOG.md">Changelog</a> · Latest release: <strong>v1.2.0</strong></p>
 
 ## Quick Start
 
@@ -17,61 +19,65 @@ npm run dev
 
 Then open http://localhost:5173
 
-Set your Anthropic API key in the Settings page (required for AI conversation with Sakura).
+Copy `.env.example` to `.env` if you want, or set your Anthropic API key in **Settings** (required for AI conversation with Sakura).
 
 ## Features
 
 | Feature | Description |
 |---|---|
-| 💬 AI Conversation | Chat with Sakura, your AI tutor — streaming, corrections, scenarios |
-| 読解 Reader | Immersion reading — tokenized text with furigana, per-word lookup, and live VN capture |
-| 字 Kana Study | Interactive hiragana/katakana drill with progress tracking |
-| 📚 Vocabulary SRS | Spaced repetition flashcards (SM-2 algorithm) |
-| 🔥 Streaks & XP | Daily streaks and experience points |
-| 📊 Progress | Stats, SRS maturity, achievements |
+| 会話 AI Conversation | Chat with Sakura — scenarios, N5–N1 difficulty, streaming replies, corrections, sentence mining |
+| 読解 Reader | Immersion reading — furigana, offline dictionary lookup, frequency badges, VN capture (desktop) |
+| 単語 Vocabulary SRS | Sentence-first spaced repetition (SM-2), daily new-card limit, undo |
+| かな Kana | Hiragana & katakana chart + drills with mastery tracking |
+| 漢字 Kanji | Kanji study and practice by JLPT level |
+| 文法 Grammar | Browse patterns and cloze drills (N5–N4 focus) |
+| 読書 Reading practice | Graded reading exercises |
+| 進捗 Progress | Streaks, XP, SRS maturity, activity charts, achievements |
+| 設定 Settings | API key, dark mode, auto-TTS, daily study reminders, cloud sync code |
 
-## AI Conversation (Main Feature)
+Home highlights **what to do next** (due reviews, kana, or chat) with quick links to Chat and Reader.
 
-- Choose a **scenario**: free chat, restaurant, shopping, directions, etc.
-- Choose **difficulty**: N5 (beginner) through N2 (upper intermediate)
-- Sakura responds in Japanese with furigana for hard kanji
-- Every response includes an **English translation** (collapsible)
-- **Corrections panel** shows grammar/vocabulary feedback after each exchange
-- Quick-phrase buttons for common learner phrases
+## AI Conversation
+
+- Pick a **setting** (自由会話, レストラン, 買い物, etc.) and **JLPT level** N5–N1
+- Sakura replies in Japanese (furigana for harder kanji at lower levels)
+- Collapsible **English translation** and a **corrections** panel after each turn
+- Quick phrases for learners; **+ Add** chips mine words into your SRS deck
+- In-progress chats resume if you switch tabs
 
 ## Reader (Immersion Reading)
 
-Paste any Japanese text — or capture it live from a visual novel — and get an instant reading aid:
+Paste Japanese text — or capture it live from a visual novel — for an instant reading aid:
 
-- Text is tokenized client-side (kuromoji.js) with **furigana** shown above kanji
-- Tap any word for its reading, part of speech, and an English gloss (checks your own deck first, falls back to AI lookup)
-- Each word lookup also shows a **frequency badge** (very common → rare) and flags when a word is **context-dependent**, with a short note on what changes
-- **+ Add to deck** saves a word straight into the same SRS system as the rest of the app, with the sentence it came from as context
-- Newest text appears at the top, so you're not scrolling down as you read
-- Live session stats: characters read, unique words, new words added, reading speed
+- Client-side tokenization (kuromoji) with **furigana** over kanji
+- Tap a word for reading, part of speech, and gloss: **your deck → offline JMdict** (bundled), with **AI fallback** only when needed
+- **Frequency badge** (very common → rare) and notes when a word is context-dependent
+- **+ Add to deck** saves the word into SRS with the sentence as context
+- Session stats and **reading history**; Capture Mode keeps running across tabs
 
-**Capture Mode** (desktop app only): pairs with [Textractor](https://github.com/Artikash/Textractor) (free, open-source VN text hooker). Enable Textractor's Clipboard extension and Nihongo Sensei will auto-pull new lines as you play — no copy-paste needed. If the VN has a translation patch and Textractor is hooked to both languages, the English attaches automatically as each line's translation. Capture keeps running even if you switch to another tab. In-app setup instructions are on the Reader page.
+**Capture Mode** (desktop app only): pairs with [Textractor](https://github.com/Artikash/Textractor). Enable Textractor’s Clipboard extension and Nihongo Sensei pulls new lines as you play. If the VN has a translation patch and both languages are hooked, English attaches automatically. Setup tips are on the Reader page.
 
 ## Desktop App (Electron)
 
-The app also runs as a standalone Windows desktop app — no browser or hosting required. Grab a pre-built copy from the [latest release](https://github.com/pdmacinnes/nihongo-sensei/releases/latest), or build it yourself:
+Standalone Windows app — no browser required. Download from the [latest release](https://github.com/pdmacinnes/nihongo-sensei/releases/latest), or build:
 
 ```
-npm run electron:dev      # run in a desktop window with hot reload
-npm run electron:build    # build an installer + portable .exe into release/
+npm run electron:dev      # desktop window + Vite HMR
+npm run electron:build    # installer + portable exe → release/
 ```
 
-`electron:build` produces:
+Produces:
 - `release/Nihongo Sensei Setup <version>.exe` — installer
-- `release/Nihongo Sensei <version>.exe` — portable, no install needed
+- `release/Nihongo Sensei <version>.exe` — portable
 
-The desktop build uses the same React/Vite source as the web app — no separate codebase to maintain.
+Same React/Vite codebase as the web app.
 
-> **Note:** `npm run electron:build` bakes whatever `VITE_ANTHROPIC_API_KEY` is in your local `.env` into the packaged app. That's fine for a build you run yourself, but don't hand a build with your real key to anyone else — clear the key from `.env` before building a copy to share, and the recipient can add their own key from the Settings page instead.
+> **Note:** `electron:build` can bake `VITE_ANTHROPIC_API_KEY` from a local `.env` into the package. For a build you share, clear that key first — recipients can add their own in Settings.
 
 ## Tips
 
 - Enable your OS Japanese IME to type in hiragana/katakana
-- If you're a beginner, start with **Kana Study** to learn hiragana first
-- The **N5 Free Chat** scenario is perfect for absolute beginners
-- All progress is saved locally in your browser (or locally on disk in the desktop app)
+- Beginners: start with **Kana**, then vocab reviews, then **N5 Free Chat**
+- Progress is saved locally (browser storage or on disk in the desktop app)
+- Optional **cloud sync** via a sync code in Settings — upload/download carefully if local XP is ahead
+- See **ガイド / Guide** in the app for the learning method and a sample daily schedule
