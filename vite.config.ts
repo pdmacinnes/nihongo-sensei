@@ -60,7 +60,9 @@ export default defineConfig({
         scope: './',
         icons: [
           { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          // Actual file is 1254x1254 (not 512x512) — sizes must match the real pixel
+          // dimensions or browsers can reject/mis-pick the icon during install.
+          { src: 'icon-512.png', sizes: '1254x1254', type: 'image/png', purpose: 'any maskable' },
         ],
       },
       workbox: {
